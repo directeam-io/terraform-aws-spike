@@ -1,0 +1,20 @@
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# The module is consumed by other configurations; lock files belong to the caller.
+.terraform.lock.hcl
+
+.DS_Store
