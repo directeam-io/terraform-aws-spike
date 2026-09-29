@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchLogsReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "logs:Get*",
+        "logs:FilterLogEvents",
+        "logs:StartLiveTail",
+        "logs:StartQuery",
+        "logs:StopLiveTail",
+        "logs:StopQuery",
+        "logs:TestMetricFilter"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:Describe*",
+        "cloudwatch:GenerateQuery",
+        "cloudwatch:GenerateQueryResultsSummary",
+        "cloudwatch:Get*",
+        "cloudwatch:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchLogsMetadataReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "logs:Describe*",
+        "logs:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManagerReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets",
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EksPublicParametersReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": "arn:aws:ssm:*:*:parameter/aws/service/eks/*"
+    },
+    {
+      "Sid": "OverflowFromGroup6",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:CheckCapacity",
+        "wafv2:DescribeAllManagedProducts",
+        "wafv2:DescribeManagedProductsByVendor",
+        "wafv2:DescribeManagedRuleGroup",
+        "wafv2:GetIPSet",
+        "wafv2:GetLoggingConfiguration",
+        "wafv2:GetManagedRuleSet",
+        "wafv2:GetMobileSdkRelease",
+        "wafv2:GetPermissionPolicy",
+        "wafv2:GetRateBasedStatementManagedKeys",
+        "wafv2:GetRegexPatternSet",
+        "wafv2:GetRuleGroup",
+        "wafv2:GetSampledRequests",
+        "wafv2:GetWebACL",
+        "wafv2:GetWebACLForResource",
+        "wafv2:List*",
+        "wellarchitected:ExportLens",
+        "wellarchitected:Get*",
+        "support:DescribeSeverityLevels",
+        "support:DescribeTrustedAdvisorChecks",
+        "supportplans:Get*",
+        "supportplans:List*",
+        "controltower:ListLandingZones",
+        "controltower:GetLandingZone"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
