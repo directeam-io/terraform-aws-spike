@@ -55,7 +55,7 @@ run "organization_whole_org" {
   }
 
   assert {
-    condition     = length(aws_iam_role.spike) == 1 && aws_iam_role.spike[0].name == "DirecteamSpikeReadOnlyAccess"
+    condition     = aws_iam_role.spike[0].name == "DirecteamSpikeReadOnlyAccess"
     error_message = "The Spike role must be created in the management account."
   }
 
@@ -214,13 +214,29 @@ run "organization_delegated_admin" {
 
   assert {
     condition     = length(aws_iam_role.spike) == 0 && length(aws_bcmdataexports_export.cur) == 0
-    error_message = "A delegated administrator must only deploy the StackSet."
+    error_message = "A delegated administrator must only deploy the StackSet: the management account owns the CUR export."
   }
 
   assert {
     condition     = aws_cloudformation_stack_set.spike[0].call_as == "DELEGATED_ADMIN"
     error_message = "The StackSet must be created as a delegated administrator."
   }
+}
+
+run "organization_ignores_disabling_cur_export" {
+  command = plan
+
+  variables {
+    deployment_mode   = "organization"
+    enable_cur_export = false
+  }
+
+  assert {
+    condition     = length(aws_bcmdataexports_export.cur) == 1
+    error_message = "The management account must always create the CUR export in organization mode."
+  }
+
+  expect_failures = [check.cur_export_setting_ignored_in_organization_mode]
 }
 
 run "organization_from_member_account_fails" {
@@ -260,7 +276,7 @@ run "single_account" {
 
   assert {
     condition     = length(aws_bcmdataexports_export.cur) == 0
-    error_message = "The CUR export must be off by default in account mode."
+    error_message = "A linked account must not create a CUR export by default; the management account's export covers every account."
   }
 }
 
@@ -275,7 +291,7 @@ run "single_account_with_cur_and_no_notification" {
 
   assert {
     condition     = length(aws_bcmdataexports_export.cur) == 1
-    error_message = "enable_cur_export = true must create the export in account mode."
+    error_message = "enable_cur_export = true must create the export in account mode (management account or standalone account)."
   }
 
   assert {

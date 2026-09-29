@@ -28,17 +28,26 @@ output "member_account_ids" {
   value       = try(sort(distinct([for s in aws_cloudformation_stack_set_instance.spike[0].stack_instance_summaries : s.account_id])), [])
 }
 
+output "bedrock_invocation_log_buckets" {
+  description = "Bedrock invocation log bucket in the current account, by region."
+  value       = { for region, bucket in aws_s3_bucket.bedrock_logs : region => bucket.id }
+}
+
+output "bedrock_invocation_logs_accounts" {
+  description = "Accounts and regions where Bedrock invocation logging is deployed for Spike."
+  value       = local.deployed_bedrock_logs
+}
 output "cur_bucket_name" {
-  description = "S3 bucket that receives the CUR 2.0 export. Null when the export is disabled."
+  description = "S3 bucket that receives the CUR 2.0 export. Null when no export is created in this account."
   value       = try(aws_s3_bucket.cur[0].id, null)
 }
 
 output "cur_bucket_arn" {
-  description = "ARN of the CUR 2.0 bucket. Null when the export is disabled."
+  description = "ARN of the CUR 2.0 bucket. Null when no export is created in this account."
   value       = try(aws_s3_bucket.cur[0].arn, null)
 }
 
 output "cur_export_arn" {
-  description = "ARN of the CUR 2.0 data export. Null when the export is disabled."
+  description = "ARN of the CUR 2.0 data export. Null when no export is created in this account."
   value       = try(aws_bcmdataexports_export.cur[0].arn, null)
 }

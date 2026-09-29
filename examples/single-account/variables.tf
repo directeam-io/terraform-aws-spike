@@ -9,7 +9,7 @@ variable "directeam_id" {
 }
 
 variable "enable_cur_export" {
-  description = "Export this account's own cost data. Only needed for standalone accounts that aren't part of an AWS Organization."
+  description = "Export this account's cost data. Set to true only for a standalone account or the management account; linked accounts are covered by the management account's export."
   type        = bool
   default     = false
 }

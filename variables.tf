@@ -84,14 +84,92 @@ variable "enable_log_management" {
 }
 
 ################################################################################
+# Bedrock invocation logs
+################################################################################
+
+variable "enable_bedrock_invocation_logs" {
+  description = <<-EOT
+    Collect Amazon Bedrock invocation logs for Spike, only in the accounts and regions that use Bedrock. Logs contain
+    metadata only (model, caller identity, token counts); prompts, responses, and embeddings are never delivered.
+    Where Bedrock is used is found automatically from AWS Cost Explorer, unless bedrock_invocation_logs_accounts is set.
+    - Current account: logging is configured directly and REPLACES any existing invocation logging configuration in
+      its regions that use Bedrock.
+    - Member accounts (organization mode): deployed by the same StackSet as the Spike role. Account/region pairs that
+      already have invocation logging configured are left unchanged and skipped.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "bedrock_invocation_logs_accounts" {
+  description = <<-EOT
+    Optional override for the accounts and regions that get Bedrock invocation logging, as a map of account ID to
+    region list. Leave null (default) to discover them automatically from AWS Cost Explorer at plan time: the module
+    then looks for Bedrock spend in the last bedrock_invocation_logs_lookback_days days. Set it to pin the list, for
+    example when Cost Explorer or the AWS CLI isn't available to Terraform, when running as a delegated administrator,
+    or to add a region that hasn't been billed yet. An empty map deploys nothing.
+    A dt-bedrock-logs-<account-id>-<region> bucket is created only for the resulting account/region pairs, readable only
+    by the Spike role in that account. The buckets only hold a rolling copy for Spike to collect, and are deleted with
+    their contents when the feature is turned off or an account/region stops using Bedrock.
+  EOT
+  type        = map(list(string))
+  default     = null
+
+  validation {
+    condition     = var.bedrock_invocation_logs_accounts == null || alltrue([for account_id in keys(coalesce(var.bedrock_invocation_logs_accounts, {})) : can(regex("^\\d{12}$", account_id))])
+    error_message = "Each bedrock_invocation_logs_accounts key must be a 12-digit AWS account ID."
+  }
+
+  validation {
+    condition = var.bedrock_invocation_logs_accounts == null || alltrue(flatten([
+      for regions in values(coalesce(var.bedrock_invocation_logs_accounts, {})) : [for region in regions : can(regex("^[a-z]{2}(-[a-z]+)+-\\d$", region))]
+    ]))
+    error_message = "Each bedrock_invocation_logs_accounts region must be an AWS region name, e.g. us-east-1."
+  }
+
+  validation {
+    condition = var.bedrock_invocation_logs_accounts == null || alltrue([
+      for regions in values(coalesce(var.bedrock_invocation_logs_accounts, {})) : length(regions) > 0 && length(regions) == length(distinct(regions))
+    ])
+    error_message = "Each bedrock_invocation_logs_accounts entry must list at least one region, without duplicates."
+  }
+}
+
+variable "bedrock_invocation_logs_lookback_days" {
+  description = "How many days of AWS Cost Explorer data are searched for Bedrock usage when bedrock_invocation_logs_accounts is null. Accounts and regions without Bedrock spend in this window stop being logged."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.bedrock_invocation_logs_lookback_days >= 7 && var.bedrock_invocation_logs_lookback_days <= 365
+    error_message = "bedrock_invocation_logs_lookback_days must be between 7 and 365."
+  }
+}
+
+variable "bedrock_invocation_logs_retention_days" {
+  description = "Days Bedrock invocation logs are kept in each account before they expire."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.bedrock_invocation_logs_retention_days >= 1 && var.bedrock_invocation_logs_retention_days <= 3650
+    error_message = "bedrock_invocation_logs_retention_days must be between 1 and 3650."
+  }
+}
+
+################################################################################
 # Cost and Usage Report (CUR 2.0) export
 ################################################################################
 
 variable "enable_cur_export" {
   description = <<-EOT
-    Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from.
-    Defaults to true in "organization" mode (the management account sees the whole organization's costs) and false in
-    "account" mode.
+    Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from
+    the management account, because it sees the costs of every account.
+    - deployment_mode = "organization": always created in the management account (this setting is ignored). Not created
+      when running as a delegated administrator; install the management account with deployment_mode = "account" and
+      enable_cur_export = true instead.
+    - deployment_mode = "account": off by default, since a linked account's export only contains its own costs. Set it
+      to true for the management account or for a standalone account that isn't part of an AWS Organization.
   EOT
   type        = bool
   default     = null

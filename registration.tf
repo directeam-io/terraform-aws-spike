@@ -25,6 +25,9 @@ resource "aws_cloudformation_stack" "registration" {
           roleArn        = try(aws_iam_role.spike[0].arn, "")
           curBucketName  = try(aws_s3_bucket.cur[0].id, "")
           stackSetName   = try(aws_cloudformation_stack_set.spike[0].name, "")
+
+          # JSON map of account ID to regions where Spike can collect Bedrock invocation logs.
+          bedrockInvocationLogs = jsonencode(local.deployed_bedrock_logs)
         }
       }
     }
@@ -42,5 +45,8 @@ resource "aws_cloudformation_stack" "registration" {
     aws_iam_role_policy_attachment.spike,
     aws_cloudformation_stack_set_instance.spike,
     aws_bcmdataexports_export.cur,
+    aws_bedrock_model_invocation_logging_configuration.spike,
+    aws_cloudformation_stack_instances.bedrock_logs,
+    aws_iam_role_policy.bedrock_logs_read,
   ]
 }
