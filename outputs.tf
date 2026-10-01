@@ -5,7 +5,22 @@ output "role_name" {
 
 output "role_arn" {
   description = "ARN of the Spike role in the current account. Null when running as a StackSets delegated administrator."
-  value       = try(aws_iam_role.spike[0].arn, null)
+  value       = local.is_delegated_admin ? null : "arn:aws:iam::${local.account_id}:role/${local.role_name}"
+}
+
+output "base_onboarding_source" {
+  description = "Whether the base read-only onboarding remains CloudFormation-owned or is managed by Terraform."
+  value       = local.existing_onboarding_detected ? "cloudformation" : "terraform"
+}
+
+output "base_onboarding_created" {
+  description = "Whether this module creates the base read-only onboarding resources."
+  value       = local.manage_base_onboarding
+}
+
+output "existing_onboarding_stack_name" {
+  description = "Detected or declared existing CloudFormation onboarding stack name."
+  value       = local.existing_onboarding_stack_name != "" ? local.existing_onboarding_stack_name : null
 }
 
 output "stack_set_name" {
@@ -37,6 +52,17 @@ output "bedrock_invocation_logs_accounts" {
   description = "Accounts and regions where Bedrock invocation logging is deployed for Spike."
   value       = local.deployed_bedrock_logs
 }
+
+output "bedrock_stack_set_name" {
+  description = "Name of the Bedrock-only StackSet. Null when no member-account Bedrock logging is deployed."
+  value       = try(aws_cloudformation_stack_set.bedrock_logs[0].name, null)
+}
+
+output "bedrock_stack_set_id" {
+  description = "ID of the Bedrock-only StackSet. Null when no member-account Bedrock logging is deployed."
+  value       = try(aws_cloudformation_stack_set.bedrock_logs[0].stack_set_id, null)
+}
+
 output "cur_bucket_name" {
   description = "S3 bucket that receives the CUR 2.0 export. Null when no export is created in this account."
   value       = try(aws_s3_bucket.cur[0].id, null)

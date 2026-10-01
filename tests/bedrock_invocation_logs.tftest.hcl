@@ -45,8 +45,9 @@ mock_provider "aws" {
 mock_provider "external" {}
 
 variables {
-  external_id  = "spike-test-external-id"
-  directeam_id = "directeam-test-id"
+  external_id          = "spike-test-external-id"
+  directeam_id         = "directeam-test-id"
+  base_onboarding_mode = "create"
 }
 
 run "disabled_by_default" {
@@ -177,12 +178,12 @@ run "organization" {
   }
 
   assert {
-    condition     = length(aws_cloudformation_stack_set.spike) == 1 && strcontains(local.member_template_body, "BedrockInvocationLogging")
-    error_message = "Bedrock invocation logs must be part of the single Spike StackSet."
+    condition     = length(aws_cloudformation_stack_set.spike) == 1 && length(aws_cloudformation_stack_set.bedrock_logs) == 1 && !strcontains(local.member_template_body, "BedrockInvocationLogging") && strcontains(local.bedrock_member_template_body, "BedrockInvocationLogging")
+    error_message = "Bedrock invocation logs must use a separate StackSet from the read-only role."
   }
 
   assert {
-    condition = jsonencode(local.member_template.Mappings.BedrockInvocationLogs) == jsonencode({
+    condition = jsonencode(local.bedrock_member_template.Mappings.BedrockInvocationLogs) == jsonencode({
       "eu-west-1" = { "333333333333" = "1" }
       "us-east-1" = { "222222222222" = "1" }
       "us-west-2" = { "222222222222" = "1" }
@@ -191,8 +192,8 @@ run "organization" {
   }
 
   assert {
-    condition     = toset(keys(aws_cloudformation_stack_instances.bedrock_logs)) == toset(["us-west-2", "eu-west-1"])
-    error_message = "Only regions other than the home region need extra stack instances."
+    condition     = toset(keys(aws_cloudformation_stack_instances.bedrock_logs)) == toset(["us-east-1", "us-west-2", "eu-west-1"])
+    error_message = "The Bedrock-only StackSet must target every enabled member-account region."
   }
 
   assert {
@@ -201,8 +202,8 @@ run "organization" {
   }
 
   assert {
-    condition     = aws_cloudformation_stack_instances.bedrock_logs["us-west-2"].stack_set_name == aws_cloudformation_stack_set.spike[0].name
-    error_message = "Extra regions must be instances of the main Spike StackSet."
+    condition     = aws_cloudformation_stack_instances.bedrock_logs["us-west-2"].stack_set_name == aws_cloudformation_stack_set.bedrock_logs[0].name
+    error_message = "Enabled regions must be instances of the Bedrock-only StackSet."
   }
 
   assert {
@@ -215,15 +216,15 @@ run "organization" {
 
   assert {
     condition = alltrue([
-      for name, resource in local.member_template.Resources :
+      for name, resource in local.bedrock_member_template.Resources :
       resource.Condition == "CreateBedrockInvocationLogs" if startswith(name, "Bedrock")
     ])
     error_message = "Every Bedrock resource must be conditional on the account/region mapping."
   }
 
   assert {
-    condition     = aws_cloudformation_stack_set.spike[0].template_body == local.member_template_body && length(local.member_template_body) <= 51200
-    error_message = "The template must be sent inline and fit the CloudFormation limit, without a template bucket in the customer account."
+    condition     = aws_cloudformation_stack_set.bedrock_logs[0].template_body == local.bedrock_member_template_body && length(local.bedrock_member_template_body) <= 51200
+    error_message = "The Bedrock template must be sent inline and fit the CloudFormation limit."
   }
 
   assert {
@@ -255,8 +256,8 @@ run "organization_many_accounts_fit_inline" {
   }
 
   assert {
-    condition     = length(local.member_template_body) <= 51200 && aws_cloudformation_stack_set.spike[0].template_body == local.member_template_body
-    error_message = "120 Bedrock account/region pairs with every option enabled must fit the inline template limit."
+    condition     = length(local.bedrock_member_template_body) <= 51200 && aws_cloudformation_stack_set.bedrock_logs[0].template_body == local.bedrock_member_template_body
+    error_message = "120 Bedrock account/region pairs must fit the inline template limit."
   }
 }
 
@@ -269,11 +270,11 @@ run "organization_too_many_bedrock_pairs_fails" {
     enable_log_management          = true
     enable_bedrock_invocation_logs = true
     bedrock_invocation_logs_accounts = {
-      for i in range(100) : format("2%011d", i) => ["us-east-1", "us-west-2", "eu-west-1"]
+      for i in range(1000) : format("2%011d", i) => ["us-east-1", "us-west-2", "eu-west-1"]
     }
   }
 
-  expect_failures = [aws_cloudformation_stack_set.spike]
+  expect_failures = [aws_cloudformation_stack_set.bedrock_logs]
 }
 
 run "account_outside_selected_members" {
@@ -289,7 +290,7 @@ run "account_outside_selected_members" {
     }
   }
 
-  expect_failures = [aws_cloudformation_stack_set.spike]
+  expect_failures = [aws_cloudformation_stack_set.bedrock_logs]
 }
 
 run "delegated_admin" {
@@ -316,7 +317,7 @@ run "delegated_admin" {
   }
 
   assert {
-    condition     = jsonencode(local.member_template.Mappings.BedrockInvocationLogs) == jsonencode({ "us-east-1" = { "111111111111" = "1" }, "us-west-2" = { "111111111111" = "1" } })
+    condition     = jsonencode(local.bedrock_member_template.Mappings.BedrockInvocationLogs) == jsonencode({ "us-east-1" = { "111111111111" = "1" }, "us-west-2" = { "111111111111" = "1" } })
     error_message = "The delegated administrator account must get Bedrock logging through the StackSet."
   }
 
@@ -418,8 +419,8 @@ run "discovery_organization" {
   }
 
   assert {
-    condition     = toset(keys(aws_cloudformation_stack_instances.bedrock_logs)) == toset(["us-west-2", "eu-west-1"])
-    error_message = "Only discovered non-home regions need extra stack instances."
+    condition     = toset(keys(aws_cloudformation_stack_instances.bedrock_logs)) == toset(["us-east-1", "us-west-2", "eu-west-1"])
+    error_message = "Every discovered member-account region needs a Bedrock-only StackSet instance."
   }
 }
 

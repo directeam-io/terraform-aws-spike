@@ -59,7 +59,7 @@ locals {
   member_template = merge(
     {
       AWSTemplateFormatVersion = "2010-09-09"
-      Description              = "Directeam Spike (terraform-spike-aws-onboarding v${local.module_version})"
+      Description              = "Directeam Spike (terraform-aws-spike v${local.module_version})"
 
       Parameters = {
         ExternalId = {
@@ -76,35 +76,26 @@ locals {
         }
       }
 
-      Conditions = merge(
-        { IsHomeRegion = { "Fn::Equals" = [{ Ref = "AWS::Region" }, local.home_region] } },
-        { for name, condition in local.bedrock_logs_member_conditions : name => condition if local.member_bedrock_logs_enabled },
-      )
+      Conditions = {
+        IsHomeRegion = { "Fn::Equals" = [{ Ref = "AWS::Region" }, local.home_region] }
+      }
 
-      Resources = merge(
-        local.member_home_region_resources,
-        { for name, resource in local.bedrock_logs_member_resources : name => resource if local.member_bedrock_logs_enabled },
-      )
+      Resources = local.member_home_region_resources
 
-      Outputs = merge(
-        {
-          RoleArn = {
-            Condition   = "IsHomeRegion"
-            Description = "ARN of the Spike read-only access role"
-            Value       = { "Fn::GetAtt" = ["SpikeRole", "Arn"] }
-          }
-        },
-        { for name, output in local.bedrock_logs_member_outputs : name => output if local.member_bedrock_logs_enabled },
-      )
+      Outputs = {
+        RoleArn = {
+          Condition   = "IsHomeRegion"
+          Description = "ARN of the Spike read-only access role"
+          Value       = { "Fn::GetAtt" = ["SpikeRole", "Arn"] }
+        }
+      }
     },
-    { for section, mapping in { Mappings = { BedrockInvocationLogs = local.bedrock_logs_mapping } } : section => mapping if local.member_bedrock_logs_enabled },
   )
 
   member_template_body = jsonencode(local.member_template)
 
-  # CloudFormation accepts inline templates up to 51,200 bytes. The template only grows with the number of Bedrock
-  # account/region pairs (about 19 bytes each, roughly 140 pairs with every option enabled), so nothing has to be
-  # hosted in the customer's account.
+  # CloudFormation accepts inline templates up to 51,200 bytes. Both StackSet templates are sent inline so nothing
+  # has to be hosted in the customer's account.
   member_template_limit = 51200
 }
 
@@ -112,7 +103,7 @@ resource "aws_cloudformation_stack_set" "spike" {
   count = local.deploy_stack_set ? 1 : 0
 
   name             = local.stack_set_name
-  description      = "Deploys Spike to member accounts (terraform-spike-aws-onboarding)"
+  description      = "Deploys Spike to member accounts (terraform-aws-spike)"
   permission_model = "SERVICE_MANAGED"
   capabilities     = ["CAPABILITY_NAMED_IAM"]
   call_as          = var.stackset_call_as
@@ -161,17 +152,7 @@ resource "aws_cloudformation_stack_set" "spike" {
 
     precondition {
       condition     = length(local.member_template_body) <= local.member_template_limit
-      error_message = "The generated member account template is ${length(local.member_template_body)} bytes, above the ${local.member_template_limit}-byte CloudFormation limit. It grows with the number of Bedrock account/region pairs (${length(flatten(values(local.member_bedrock_logs)))} now): limit Bedrock invocation logging to fewer account/region pairs by setting bedrock_invocation_logs_accounts."
-    }
-
-    precondition {
-      condition     = !local.member_bedrock_logs_enabled || length(local.bedrock_logs_function_source) <= 4096
-      error_message = "The Bedrock logging function is ${length(local.bedrock_logs_function_source)} characters, above the 4,096-character limit for inline Lambda code."
-    }
-
-    precondition {
-      condition     = !local.has_account_filter || length(setsubtract(keys(local.member_bedrock_logs), var.member_account_ids)) == 0
-      error_message = "bedrock_invocation_logs_accounts lists accounts that don't receive the Spike role: ${join(", ", setsubtract(keys(local.member_bedrock_logs), var.member_account_ids))}. Add them to member_account_ids or remove them from bedrock_invocation_logs_accounts."
+      error_message = "The generated member account template is ${length(local.member_template_body)} bytes, above the ${local.member_template_limit}-byte CloudFormation limit."
     }
   }
 }

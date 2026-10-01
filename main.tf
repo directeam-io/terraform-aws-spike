@@ -1,5 +1,16 @@
 data "aws_caller_identity" "current" {}
 
+data "external" "existing_onboarding" {
+  count = var.base_onboarding_mode != "create" ? 1 : 0
+
+  program = ["python3", "${path.module}/scripts/discover_existing_onboarding.py"]
+
+  query = {
+    account_id      = local.account_id
+    deployment_mode = var.deployment_mode
+  }
+}
+
 # Finds where Bedrock is used from Cost Explorer (plan time). Runs the AWS CLI with the credentials Terraform runs with.
 data "external" "bedrock_usage" {
   count = var.enable_bedrock_invocation_logs && var.bedrock_invocation_logs_accounts == null ? 1 : 0
@@ -19,6 +30,13 @@ data "external" "bedrock_usage" {
   }
 }
 
+check "existing_base_onboarding" {
+  assert {
+    condition     = var.base_onboarding_mode != "existing" || local.existing_onboarding_detected
+    error_message = "base_onboarding_mode = \"existing\" requires a successful Directeam CloudFormation onboarding stack in us-east-1."
+  }
+}
+
 data "aws_organizations_organization" "current" {
   count = local.is_organization ? 1 : 0
 
@@ -27,11 +45,13 @@ data "aws_organizations_organization" "current" {
 }
 
 locals {
-  module_version = "1.0.0"
+  module_version = "1.1.0"
 
-  role_name               = "DirecteamFinOpsReadOnlyAccess"
-  stack_set_name          = "DirecteamFinOpsReadOnlyAccess"
-  registration_stack_name = "DirecteamFinOpsRegistration"
+  role_name                       = "DirecteamFinOpsReadOnlyAccess"
+  stack_set_name                  = "DirecteamFinOpsReadOnlyAccess"
+  bedrock_stack_set_name          = "DirecteamBedrockInvocationLogs"
+  registration_stack_name         = "DirecteamFinOpsRegistration"
+  bedrock_registration_stack_name = "DirecteamBedrockInvocationLogsRegistration"
 
   # Spike's SNS-backed custom resources and CUR 2.0 data exports are only available in us-east-1.
   home_region = "us-east-1"
@@ -47,19 +67,24 @@ locals {
   is_organization    = var.deployment_mode == "organization"
   is_delegated_admin = local.is_organization && var.stackset_call_as == "DELEGATED_ADMIN"
 
+  existing_onboarding_detected   = var.base_onboarding_mode != "create" && data.external.existing_onboarding[0].result.exists == "true"
+  existing_onboarding_stack_name = local.existing_onboarding_detected ? data.external.existing_onboarding[0].result.stack_name : ""
+  manage_base_onboarding         = !local.existing_onboarding_detected
+
   # A delegated administrator is itself a member account and receives the role through the StackSet.
-  create_local_role = !local.is_delegated_admin
+  create_local_role       = local.manage_base_onboarding && !local.is_delegated_admin
+  configure_local_bedrock = !local.is_delegated_admin
   # Spike needs one CUR export, from the management account, which sees every account's costs. Account mode only
   # creates it when asked to (the management account itself, or a standalone account).
-  create_cur_export = local.is_organization ? !local.is_delegated_admin : coalesce(var.enable_cur_export, false)
-  deploy_stack_set  = local.is_organization
+  create_cur_export = local.manage_base_onboarding && (local.is_organization ? !local.is_delegated_admin : coalesce(var.enable_cur_export, false))
+  deploy_stack_set  = local.manage_base_onboarding && local.is_organization
 
   organization           = one(data.aws_organizations_organization.current)
   management_account_id  = try(local.organization.master_account_id, null)
   organization_root_id   = try(local.organization.roots[0].id, null)
   target_ou_ids          = length(var.organizational_unit_ids) > 0 ? var.organizational_unit_ids : compact([local.organization_root_id])
   has_account_filter     = length(var.member_account_ids) > 0
-  auto_deployment_active = var.auto_deployment && !local.has_account_filter
+  auto_deployment_active = var.auto_deployment
 
   tags = merge(
     var.tags,
@@ -86,10 +111,10 @@ locals {
     var.bedrock_invocation_logs_accounts == null ? local.bedrock_discovered_accounts : var.bedrock_invocation_logs_accounts
   )
 
-  local_bedrock_logs_regions = local.create_local_role ? toset(lookup(local.bedrock_logs_accounts, local.account_id, [])) : toset([])
+  local_bedrock_logs_regions = local.configure_local_bedrock ? toset(lookup(local.bedrock_logs_accounts, local.account_id, [])) : toset([])
 
   # StackSets never deploy to the management account, which is handled directly by this module.
-  member_bedrock_logs = local.deploy_stack_set ? {
+  member_bedrock_logs = local.is_organization ? {
     for account_id, regions in local.bedrock_logs_accounts : account_id => regions
     if account_id != local.management_account_id && !(local.create_local_role && account_id == local.account_id)
   } : {}

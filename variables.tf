@@ -43,6 +43,22 @@ variable "deployment_mode" {
   }
 }
 
+variable "base_onboarding_mode" {
+  description = <<-EOT
+    Controls ownership of the existing Directeam read-only onboarding resources.
+    - "auto": detect the matching CloudFormation stack and preserve it when present.
+    - "create": always create and manage the base role, StackSet, CUR, and registration with Terraform.
+    - "existing": require the base onboarding to exist and manage only optional Terraform features such as Bedrock logs.
+  EOT
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "create", "existing"], var.base_onboarding_mode)
+    error_message = "base_onboarding_mode must be auto, create, or existing."
+  }
+}
+
 ################################################################################
 # Role permissions
 ################################################################################
@@ -94,7 +110,7 @@ variable "enable_bedrock_invocation_logs" {
     Where Bedrock is used is found automatically from AWS Cost Explorer, unless bedrock_invocation_logs_accounts is set.
     - Current account: logging is configured directly and REPLACES any existing invocation logging configuration in
       its regions that use Bedrock.
-    - Member accounts (organization mode): deployed by the same StackSet as the Spike role. Account/region pairs that
+    - Member accounts (organization mode): deployed by a separate Bedrock-only StackSet. Account/region pairs that
       already have invocation logging configured are left unchanged and skipped.
   EOT
   type        = bool
@@ -199,8 +215,8 @@ variable "organizational_unit_ids" {
 variable "member_account_ids" {
   description = <<-EOT
     Deploy the Spike role ONLY to these member accounts (they must belong to organizational_unit_ids).
-    Leave empty to deploy to every account in the targeted OUs. When set, automatic deployment to new accounts is
-    disabled so accounts outside this list never receive the role.
+    Leave empty to deploy to every account in the targeted OUs. The StackSet uses an INTERSECTION filter so accounts
+    outside this list never receive the role, including when automatic deployment is enabled.
   EOT
   type        = list(string)
   default     = []
@@ -212,7 +228,7 @@ variable "member_account_ids" {
 }
 
 variable "auto_deployment" {
-  description = "Automatically deploy the Spike role to accounts that join the targeted OUs later. Ignored (forced off) when member_account_ids is set."
+  description = "Automatically deploy the Spike role to eligible accounts that join the targeted OUs later. When member_account_ids is set, only listed accounts are eligible."
   type        = bool
   default     = true
 }

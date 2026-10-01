@@ -176,8 +176,10 @@ resource "aws_iam_role_policy" "bedrock_logs_read" {
   for_each = aws_s3_bucket.bedrock_logs
 
   name   = "BedrockInvocationLogsRead-${each.key}"
-  role   = aws_iam_role.spike[0].id
+  role   = local.role_name
   policy = data.aws_iam_policy_document.bedrock_logs_read[each.key].json
+
+  depends_on = [aws_iam_role.spike]
 }
 
 ################################################################################
@@ -204,7 +206,6 @@ locals {
             "BedrockInvocationLogs",
             { Ref = "AWS::Region" },
             { Ref = "AWS::AccountId" },
-            { DefaultValue = "0" },
           ]
         },
         "1",
@@ -326,6 +327,12 @@ locals {
                 Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
                 Resource = { "Fn::GetAtt" = ["BedrockLoggingFunctionLogGroup", "Arn"] }
               },
+              {
+                Sid      = "PublishOnboardingEvent"
+                Effect   = "Allow"
+                Action   = "sns:Publish"
+                Resource = var.notification_topic_arn
+              },
             ]
           }
         }]
@@ -352,8 +359,7 @@ locals {
     BedrockLogsReadPolicy = {
       Type = "AWS::IAM::RolePolicy"
       Properties = {
-        # In the home region the role is created by the same stack; elsewhere it already exists.
-        RoleName   = { "Fn::If" = ["IsHomeRegion", { Ref = "SpikeRole" }, local.role_name] }
+        RoleName   = local.role_name
         PolicyName = { "Fn::Sub" = "BedrockInvocationLogsRead-$${AWS::Region}" }
         PolicyDocument = {
           Version = "2012-10-17"
@@ -385,9 +391,14 @@ locals {
       Type      = "Custom::BedrockInvocationLogging"
       DependsOn = ["BedrockLogBucketPolicy"]
       Properties = {
-        ServiceToken = { "Fn::GetAtt" = ["BedrockLoggingFunction", "Arn"] }
-        BucketName   = { Ref = "BedrockLogBucket" }
-        KeyPrefix    = local.bedrock_logs_key_prefix
+        ServiceToken         = { "Fn::GetAtt" = ["BedrockLoggingFunction", "Arn"] }
+        BucketName           = { Ref = "BedrockLogBucket" }
+        KeyPrefix            = local.bedrock_logs_key_prefix
+        NotificationTopicArn = var.notification_topic_arn
+        DirecteamId          = { Ref = "DirecteamId" }
+        AccountId            = { Ref = "AWS::AccountId" }
+        Region               = { Ref = "AWS::Region" }
+        StackVersion         = "v${local.module_version}"
       }
     }
   }
@@ -415,14 +426,79 @@ locals {
       Value       = { "Fn::GetAtt" = ["BedrockInvocationLogging", "Status"] }
     }
   }
+
+  bedrock_member_template = {
+    AWSTemplateFormatVersion = "2010-09-09"
+    Description              = "Directeam Bedrock invocation logging (terraform-aws-spike v${local.module_version})"
+    Parameters = {
+      DirecteamId = {
+        Type      = "String"
+        MinLength = 2
+        MaxLength = 1224
+      }
+    }
+    Mappings = {
+      BedrockInvocationLogs = local.bedrock_logs_mapping
+    }
+    Conditions = local.bedrock_logs_member_conditions
+    Resources  = local.bedrock_logs_member_resources
+    Outputs    = local.bedrock_logs_member_outputs
+  }
+  bedrock_member_template_body = jsonencode(local.bedrock_member_template)
 }
 
-# The organization-wide stack instances only cover the home region; these add the other regions, for the listed
-# accounts only.
-resource "aws_cloudformation_stack_instances" "bedrock_logs" {
-  for_each = local.member_bedrock_logs_extra_regions
+resource "aws_cloudformation_stack_set" "bedrock_logs" {
+  count = local.member_bedrock_logs_enabled ? 1 : 0
 
-  stack_set_name = aws_cloudformation_stack_set.spike[0].name
+  name             = local.bedrock_stack_set_name
+  description      = "Deploys Directeam Bedrock invocation logging to selected member account regions"
+  permission_model = "SERVICE_MANAGED"
+  capabilities     = ["CAPABILITY_NAMED_IAM"]
+  call_as          = var.stackset_call_as
+  template_body    = local.bedrock_member_template_body
+
+  parameters = {
+    DirecteamId = var.directeam_id
+  }
+
+  managed_execution {
+    active = true
+  }
+
+  operation_preferences {
+    max_concurrent_percentage    = var.stackset_max_concurrent_percentage
+    failure_tolerance_percentage = var.stackset_failure_tolerance_percentage
+    region_concurrency_type      = "PARALLEL"
+  }
+
+  tags = local.tags
+
+  lifecycle {
+    ignore_changes = [administration_role_arn]
+
+    precondition {
+      condition     = length(local.bedrock_member_template_body) <= local.member_template_limit
+      error_message = "The generated Bedrock member template is ${length(local.bedrock_member_template_body)} bytes, above the ${local.member_template_limit}-byte CloudFormation limit."
+    }
+
+    precondition {
+      condition     = length(local.bedrock_logs_function_source) <= 4096
+      error_message = "The Bedrock logging function is ${length(local.bedrock_logs_function_source)} characters, above the 4,096-character inline Lambda limit."
+    }
+
+    precondition {
+      condition     = !local.has_account_filter || length(setsubtract(keys(local.member_bedrock_logs), var.member_account_ids)) == 0
+      error_message = "bedrock_invocation_logs_accounts lists accounts that don't receive the Spike role: ${join(", ", setsubtract(keys(local.member_bedrock_logs), var.member_account_ids))}."
+    }
+  }
+
+  depends_on = [aws_cloudformation_stack_set_instance.spike]
+}
+
+resource "aws_cloudformation_stack_instances" "bedrock_logs" {
+  for_each = local.member_bedrock_logs_accounts_by_region
+
+  stack_set_name = aws_cloudformation_stack_set.bedrock_logs[0].name
   regions        = [each.key]
   call_as        = var.stackset_call_as
   retain_stacks  = false
@@ -445,7 +521,4 @@ resource "aws_cloudformation_stack_instances" "bedrock_logs" {
     update = "60m"
     delete = "60m"
   }
-
-  # The read policy in these regions attaches to the role created by the home-region stacks.
-  depends_on = [aws_cloudformation_stack_set_instance.spike]
 }

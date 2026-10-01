@@ -1,8 +1,11 @@
+import json
+
 import boto3
 import cfnresponse
 
 bedrock = boto3.client("bedrock")
 s3 = boto3.resource("s3")
+sns = boto3.client("sns", region_name="us-east-1")
 
 DATA_DELIVERY_FLAGS = (
     "textDataDeliveryEnabled",
@@ -28,6 +31,24 @@ def enable(bucket, key_prefix):
     bedrock.put_model_invocation_logging_configuration(loggingConfig=config)
 
 
+def publish_event(event, props, status):
+    sns.publish(
+        TopicArn=props["NotificationTopicArn"],
+        Message=json.dumps(
+            {
+                "feature": "bedrock_invocation_logs",
+                "eventType": event["RequestType"],
+                "directeamId": props["DirecteamId"],
+                "accountId": props["AccountId"],
+                "region": props["Region"],
+                "bucketName": props["BucketName"],
+                "status": status,
+                "stackVersion": props["StackVersion"],
+            }
+        ),
+    )
+
+
 def handler(event, context):
     props = event["ResourceProperties"]
     bucket = props["BucketName"]
@@ -40,15 +61,19 @@ def handler(event, context):
             s3.Bucket(bucket).objects.all().delete()
             status = "removed"
         elif config and not points_to(config, bucket):
-            # Never replace logging the account owner configured themselves.
             status = "skipped-existing-configuration"
         else:
             enable(bucket, props["KeyPrefix"])
             status = "enabled"
+        publish_event(event, props, status)
         print(f"{event['RequestType']} {bucket}: {status}")
         cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": status}, physical_id)
     except Exception as error:
         print(f"{event['RequestType']} {bucket} failed: {error!r}")
+        try:
+            publish_event(event, props, "error")
+        except Exception as publish_error:
+            print(f"Feature event publication failed: {publish_error!r}")
         # A failed delete would leave the stack stuck, so deletes always report success.
         result = cfnresponse.SUCCESS if event["RequestType"] == "Delete" else cfnresponse.FAILED
         cfnresponse.send(event, context, result, {"Status": "error"}, physical_id, reason=str(error)[:200])

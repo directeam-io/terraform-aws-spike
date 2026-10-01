@@ -5,6 +5,19 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-01
+
+### Added
+
+- Automatic detection of existing `DirecteamFinOpsStackSet` and `DirecteamFinOpsReadOnlyAccess` CloudFormation onboarding, with `auto`, `create`, and `existing` ownership modes.
+- Per-account and per-region Bedrock invocation-log lifecycle events containing the Directeam customer ID, account ID, region, bucket, status, and module version.
+- A separate `DirecteamBedrockInvocationLogs` StackSet that can add Bedrock logging without taking ownership of existing read-only onboarding resources.
+
+### Changed
+
+- Base read-only roles, StackSets, CUR exports, and registration resources remain CloudFormation-owned when existing onboarding is detected.
+- Bedrock invocation logging is deployed independently from the base read-only StackSet.
+
 ## [1.0.0] - 2026-09-29
 
 ### Added

@@ -29,7 +29,7 @@ You can install it on a whole AWS Organization, on selected linked accounts, or 
    }
 
    module "spike" {
-     source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+     source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
      external_id     = "<external-id-from-spike>"
      directeam_id    = "<directeam-id-from-spike>"
@@ -58,10 +58,9 @@ Spike is notified automatically when `apply` finishes, and onboarding completes 
 | CUR 2.0 data export (organization mode, or `enable_cur_export`) | `dt-cur-parquet-<account-id>` | Hourly, resource-level Parquet export. |
 | CloudFormation stack | `DirecteamFinOpsRegistration` | Notifies Spike that onboarding finished (disable with `notify_spike = false`). |
 
-**In member accounts** (organization mode only), through a single service-managed CloudFormation StackSet named
-`DirecteamFinOpsReadOnlyAccess`: the same role and read-only policies, plus any optional features you enable. The role
-is created by the `us-east-1` stack of each account (IAM is global); stacks in other regions are only added for
-regional features such as Bedrock invocation logs.
+**In member accounts** (organization mode only), a service-managed CloudFormation StackSet named
+`DirecteamFinOpsReadOnlyAccess` deploys the role and read-only policies. Optional Bedrock invocation logging uses a
+separate `DirecteamBedrockInvocationLogs` StackSet so it can coexist with an existing CloudFormation-owned role.
 
 **Optionally, Bedrock invocation logs** only in the accounts and regions that use Bedrock - see
 [Bedrock invocation logs](#bedrock-invocation-logs).
@@ -82,13 +81,13 @@ S3 access logs and VPC flow logs.
   - Trusted access for CloudFormation StackSets must be enabled in AWS Organizations (CloudFormation console >
     StackSets > **Activate trusted access**, or
     `aws organizations enable-aws-service-access --service-principal member.org.stacksets.cloudformation.amazonaws.com`).
-- Only for `enable_bedrock_invocation_logs` without an explicit account map: `python3` and the AWS CLI on the machine
-  running Terraform (see [Bedrock invocation logs](#bedrock-invocation-logs)).
+- `python3` and the AWS CLI on the machine running Terraform are required for the default onboarding detection, and
+  for Bedrock usage discovery when no explicit account map is provided.
 - The credentials running Terraform need permissions to manage IAM roles and policies, CloudFormation stacks and
   StackSets, S3 buckets, BCM Data Exports, and to read AWS Organizations.
-- If Spike is already installed with the CloudFormation templates, remove those stacks and the
-  `DirecteamFinOpsReadOnlyAccess` StackSet before you run this module. The Terraform module uses the same resource
-  names, so both installs cannot coexist in one account.
+- By default, the module detects a successful `DirecteamFinOpsStackSet` or `DirecteamFinOpsReadOnlyAccess`
+  CloudFormation stack and preserves its role, StackSet, CUR, and registration resources. Set
+  `base_onboarding_mode = "create"` to disable detection, or `"existing"` to require the CloudFormation stack.
 
 The AWS provider can be configured for any region. The module pins the resources that must live in
 `us-east-1` (CUR bucket and export, registration stack, member stacks) on its own.
@@ -99,7 +98,7 @@ The AWS provider can be configured for any region. The module pins the resources
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id     = "<external-id-from-spike>"
   directeam_id    = "<directeam-id-from-spike>"
@@ -114,7 +113,7 @@ The organization root is discovered automatically and accounts that join later a
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id     = "<external-id-from-spike>"
   directeam_id    = "<directeam-id-from-spike>"
@@ -124,14 +123,14 @@ module "spike" {
 }
 ```
 
-Only the listed accounts (plus the management account) receive the role. Automatic deployment is turned off in
-this mode so new accounts never receive the role unless you add them to the list.
+Only the listed accounts (plus the management account) receive the role. The StackSet uses an `INTERSECTION` filter,
+so automatic deployment still never gives the role to an account unless you add it to the list.
 
 ### Target specific OUs
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id     = "<external-id-from-spike>"
   directeam_id    = "<directeam-id-from-spike>"
@@ -151,7 +150,7 @@ and commitment (RI / Savings Plans) data there. Member accounts still get the fu
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id       = "<external-id-from-spike>"
   directeam_id      = "<directeam-id-from-spike>"
@@ -164,7 +163,7 @@ module "spike" {
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id     = "<external-id-from-spike>"
   directeam_id    = "<directeam-id-from-spike>"
@@ -186,7 +185,7 @@ using the management account for that:
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id      = "<external-id-from-spike>"
   directeam_id     = "<directeam-id-from-spike>"
@@ -200,7 +199,7 @@ organization's costs. So install the management account separately, from that ac
 
 ```hcl
 module "spike_management" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id       = "<external-id-from-spike>"
   directeam_id      = "<directeam-id-from-spike>"
@@ -220,7 +219,7 @@ accounts and regions with Bedrock spend and nothing needs to be listed:
 
 ```hcl
 module "spike" {
-  source = "git::https://github.com/directeam-io/terraform-spike-aws-onboarding.git?ref=v1.0.0"
+  source = "git::https://github.com/directeam-io/terraform-aws-spike.git?ref=v1.1.0"
 
   external_id     = "<external-id-from-spike>"
   directeam_id    = "<directeam-id-from-spike>"
@@ -269,13 +268,12 @@ are written under `invocation-logs/AWSLogs/<account-id>/BedrockModelInvocationLo
 | Who can read it | Only the `DirecteamFinOpsReadOnlyAccess` role in the same account, through a `BedrockInvocationLogsRead-<region>` inline policy scoped to that one bucket. |
 | Retention | Objects expire after `bedrock_invocation_logs_retention_days` (default 30). |
 | Account you run Terraform in (and account mode) | Configured directly by Terraform. **This replaces any invocation logging configuration you already have in the regions that use Bedrock.** |
-| Member accounts (organization mode) | Part of the `DirecteamFinOpsReadOnlyAccess` StackSet. Each member stack checks the account/region map and only creates the logging resources where Bedrock is used. A small Lambda function configures logging and **leaves accounts that already have invocation logging unchanged** (the stack output `BedrockLoggingStatus` shows `skipped-existing-configuration`). |
+| Member accounts (organization mode) | Deployed through the separate `DirecteamBedrockInvocationLogs` StackSet. Each member stack checks the account/region map and only creates logging resources where Bedrock is used. A small Lambda configures logging, publishes account/Region lifecycle status to Directeam, and **leaves customer-owned invocation logging unchanged**. |
 | Removal | Logging is turned off and the buckets are emptied and deleted. Configurations you created yourself are never touched. |
 
 Regions must be enabled in the corresponding accounts. Nothing is uploaded to your accounts to deploy the StackSet:
-the template is sent inline, and each Bedrock account/region pair adds about 19 bytes to it. That fits roughly 140
-account/region pairs within CloudFormation's 51,200-byte limit; above that, `terraform plan` fails and tells you how
-many pairs it found. Narrow the list with `bedrock_invocation_logs_accounts`.
+the Bedrock template is sent inline. Terraform validates CloudFormation's 51,200-byte inline-template limit and fails
+planning if the selected account/Region map exceeds it; narrow the map with `bedrock_invocation_logs_accounts`.
 
 ## Updating and removing
 
@@ -331,20 +329,21 @@ many pairs it found. Narrow the list with `bedrock_invocation_logs_accounts`.
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_auto_deployment"></a> [auto\_deployment](#input\_auto\_deployment) | Automatically deploy the Spike role to accounts that join the targeted OUs later. Ignored (forced off) when member\_account\_ids is set. | `bool` | `true` | no |
+| <a name="input_auto_deployment"></a> [auto\_deployment](#input\_auto\_deployment) | Automatically deploy the Spike role to eligible accounts that join the targeted OUs later. When member\_account\_ids is set, only listed accounts are eligible. | `bool` | `true` | no |
+| <a name="input_base_onboarding_mode"></a> [base\_onboarding\_mode](#input\_base\_onboarding\_mode) | Detect and preserve existing Directeam CloudFormation onboarding (`auto`), always create the base resources (`create`), or require existing CloudFormation onboarding (`existing`). | `string` | `"auto"` | no |
 | <a name="input_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#input\_bedrock\_invocation\_logs\_accounts) | Optional override for the accounts and regions that get Bedrock invocation logging, as a map of account ID to<br/>region list. Leave null (default) to discover them automatically from AWS Cost Explorer at plan time: the module<br/>then looks for Bedrock spend in the last bedrock\_invocation\_logs\_lookback\_days days. Set it to pin the list, for<br/>example when Cost Explorer or the AWS CLI isn't available to Terraform, when running as a delegated administrator,<br/>or to add a region that hasn't been billed yet. An empty map deploys nothing.<br/>A dt-bedrock-invocation-logs-<account-id>-<region> bucket is created only for the resulting account/region pairs, readable only<br/>by the Spike role in that account. The buckets only hold a rolling copy for Spike to collect, and are deleted with<br/>their contents when the feature is turned off or an account/region stops using Bedrock. | `map(list(string))` | `null` | no |
 | <a name="input_bedrock_invocation_logs_lookback_days"></a> [bedrock\_invocation\_logs\_lookback\_days](#input\_bedrock\_invocation\_logs\_lookback\_days) | How many days of AWS Cost Explorer data are searched for Bedrock usage when bedrock\_invocation\_logs\_accounts is null. Accounts and regions without Bedrock spend in this window stop being logged. | `number` | `90` | no |
 | <a name="input_bedrock_invocation_logs_retention_days"></a> [bedrock\_invocation\_logs\_retention\_days](#input\_bedrock\_invocation\_logs\_retention\_days) | Days Bedrock invocation logs are kept in each account before they expire. | `number` | `30` | no |
 | <a name="input_cur_bucket_force_destroy"></a> [cur\_bucket\_force\_destroy](#input\_cur\_bucket\_force\_destroy) | Allow Terraform to delete the CUR bucket even when it still contains report data. Leave false in production. | `bool` | `false` | no |
 | <a name="input_deployment_mode"></a> [deployment\_mode](#input\_deployment\_mode) | How Spike is installed:<br/>- "organization": run from the AWS Organizations management account (or a CloudFormation StackSets delegated administrator).<br/>  Creates the Spike role in the current account and deploys it to member accounts through a service-managed StackSet.<br/>- "account": create the Spike role in the current account only. Use this for standalone accounts, or for individual<br/>  linked accounts when you don't want to (or can't) deploy from the management account. | `string` | n/a | yes |
 | <a name="input_directeam_id"></a> [directeam\_id](#input\_directeam\_id) | Your Directeam customer ID, provided by Spike. Used to link this deployment to your Spike tenant. | `string` | n/a | yes |
-| <a name="input_enable_bedrock_invocation_logs"></a> [enable\_bedrock\_invocation\_logs](#input\_enable\_bedrock\_invocation\_logs) | Collect Amazon Bedrock invocation logs for Spike, only in the accounts and regions that use Bedrock. Logs contain<br/>metadata only (model, caller identity, token counts); prompts, responses, and embeddings are never delivered.<br/>Where Bedrock is used is found automatically from AWS Cost Explorer, unless bedrock\_invocation\_logs\_accounts is set.<br/>- Current account: logging is configured directly and REPLACES any existing invocation logging configuration in<br/>  its regions that use Bedrock.<br/>- Member accounts (organization mode): deployed by the same StackSet as the Spike role. Account/region pairs that<br/>  already have invocation logging configured are left unchanged and skipped. | `bool` | `false` | no |
+| <a name="input_enable_bedrock_invocation_logs"></a> [enable\_bedrock\_invocation\_logs](#input\_enable\_bedrock\_invocation\_logs) | Collect Amazon Bedrock invocation logs for Spike, only in the accounts and regions that use Bedrock. Logs contain<br/>metadata only (model, caller identity, token counts); prompts, responses, and embeddings are never delivered.<br/>Where Bedrock is used is found automatically from AWS Cost Explorer, unless bedrock\_invocation\_logs\_accounts is set.<br/>- Current account: logging is configured directly and REPLACES any existing invocation logging configuration in<br/>  its regions that use Bedrock.<br/>- Member accounts (organization mode): deployed by a separate Bedrock-only StackSet. Account/region pairs that<br/>  already have invocation logging configured are left unchanged and skipped. | `bool` | `false` | no |
 | <a name="input_enable_cloudwatch_logs_read_access"></a> [enable\_cloudwatch\_logs\_read\_access](#input\_enable\_cloudwatch\_logs\_read\_access) | Allow Spike to read CloudWatch Logs content (log events, Logs Insights queries, live tail). CloudWatch metrics access is not affected. | `bool` | `true` | no |
 | <a name="input_enable_cur_export"></a> [enable\_cur\_export](#input\_enable\_cur\_export) | Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from<br/>the management account, because it sees the costs of every account.<br/>- deployment\_mode = "organization": always created in the management account (this setting is ignored). Not created<br/>  when running as a delegated administrator; install the management account with deployment\_mode = "account" and<br/>  enable\_cur\_export = true instead.<br/>- deployment\_mode = "account": off by default, since a linked account's export only contains its own costs. Set it<br/>  to true for the management account or for a standalone account that isn't part of an AWS Organization. | `bool` | `null` | no |
 | <a name="input_enable_eks_read_access"></a> [enable\_eks\_read\_access](#input\_enable\_eks\_read\_access) | Allow Spike read-only access to the Kubernetes API of your EKS clusters (eks:AccessKubernetesApi). The cluster access entries themselves are still controlled by you. | `bool` | `false` | no |
 | <a name="input_enable_log_management"></a> [enable\_log\_management](#input\_enable\_log\_management) | Allow Spike to configure S3 server access logging and VPC flow logs, delivered to a dt-logs-<account-id> bucket. | `bool` | `false` | no |
 | <a name="input_external_id"></a> [external\_id](#input\_external\_id) | External ID provided by Spike. Required in every sts:AssumeRole call Spike makes into your accounts. | `string` | n/a | yes |
-| <a name="input_member_account_ids"></a> [member\_account\_ids](#input\_member\_account\_ids) | Deploy the Spike role ONLY to these member accounts (they must belong to organizational\_unit\_ids).<br/>Leave empty to deploy to every account in the targeted OUs. When set, automatic deployment to new accounts is<br/>disabled so accounts outside this list never receive the role. | `list(string)` | `[]` | no |
+| <a name="input_member_account_ids"></a> [member\_account\_ids](#input\_member\_account\_ids) | Deploy the Spike role ONLY to these member accounts (they must belong to organizational\_unit\_ids).<br/>Leave empty to deploy to every account in the targeted OUs. The StackSet uses an INTERSECTION filter so accounts<br/>outside this list never receive the role, including when automatic deployment is enabled. | `list(string)` | `[]` | no |
 | <a name="input_notification_timeout"></a> [notification\_timeout](#input\_notification\_timeout) | Seconds CloudFormation waits for Spike to acknowledge a registration notification. | `number` | `300` | no |
 | <a name="input_notification_topic_arn"></a> [notification\_topic\_arn](#input\_notification\_topic\_arn) | Spike onboarding SNS topic. Don't change unless instructed by Spike. | `string` | `"arn:aws:sns:us-east-1:250260913666:directeam-onboarding-topic-f7a69a4b"` | no |
 | <a name="input_notify_spike"></a> [notify\_spike](#input\_notify\_spike) | Notify Spike when the deployment finishes so onboarding completes automatically. Uses a CloudFormation custom resource backed by Spike's SNS topic. | `bool` | `true` | no |
@@ -360,11 +359,16 @@ many pairs it found. Narrow the list with `bedrock_invocation_logs_accounts`.
 
 | Name | Description |
 |------|-------------|
+| <a name="output_base_onboarding_created"></a> [base\_onboarding\_created](#output\_base\_onboarding\_created) | Whether this module creates the base read-only onboarding resources. |
+| <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether base onboarding is managed by Terraform or preserved in CloudFormation. |
 | <a name="output_bedrock_invocation_log_buckets"></a> [bedrock\_invocation\_log\_buckets](#output\_bedrock\_invocation\_log\_buckets) | Bedrock invocation log bucket in the current account, by region. |
 | <a name="output_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#output\_bedrock\_invocation\_logs\_accounts) | Accounts and regions where Bedrock invocation logging is deployed for Spike. |
+| <a name="output_bedrock_stack_set_id"></a> [bedrock\_stack\_set\_id](#output\_bedrock\_stack\_set\_id) | ID of the Bedrock-only StackSet. |
+| <a name="output_bedrock_stack_set_name"></a> [bedrock\_stack\_set\_name](#output\_bedrock\_stack\_set\_name) | Name of the Bedrock-only StackSet. |
 | <a name="output_cur_bucket_arn"></a> [cur\_bucket\_arn](#output\_cur\_bucket\_arn) | ARN of the CUR 2.0 bucket. Null when no export is created in this account. |
 | <a name="output_cur_bucket_name"></a> [cur\_bucket\_name](#output\_cur\_bucket\_name) | S3 bucket that receives the CUR 2.0 export. Null when no export is created in this account. |
 | <a name="output_cur_export_arn"></a> [cur\_export\_arn](#output\_cur\_export\_arn) | ARN of the CUR 2.0 data export. Null when no export is created in this account. |
+| <a name="output_existing_onboarding_stack_name"></a> [existing\_onboarding\_stack\_name](#output\_existing\_onboarding\_stack\_name) | Existing CloudFormation onboarding stack preserved by Terraform. |
 | <a name="output_member_account_ids"></a> [member\_account\_ids](#output\_member\_account\_ids) | Member accounts that received the Spike role through the StackSet. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | ARN of the Spike role in the current account. Null when running as a StackSets delegated administrator. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | Name of the Spike role, identical in every account it's deployed to. |

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 import sys
 import types
@@ -14,7 +15,11 @@ CURRENT_SDK_FLAGS = LEGACY_SDK_FLAGS + ("videoDataDeliveryEnabled",)
 def load_function(bedrock):
     cfnresponse = types.SimpleNamespace(SUCCESS="SUCCESS", FAILED="FAILED", send=mock.Mock())
     s3 = mock.Mock()
-    boto3 = types.SimpleNamespace(client=lambda name: bedrock, resource=lambda name: s3)
+    sns = mock.Mock()
+    boto3 = types.SimpleNamespace(
+        client=lambda name, **kwargs: bedrock if name == "bedrock" else sns,
+        resource=lambda name: s3,
+    )
     with mock.patch.dict(sys.modules, {"boto3": boto3, "cfnresponse": cfnresponse}):
         spec = importlib.util.spec_from_file_location("bedrock_invocation_logging", FUNCTION_PATH)
         module = importlib.util.module_from_spec(spec)
@@ -34,7 +39,15 @@ def bedrock_client(existing_config=None, supported_flags=LEGACY_SDK_FLAGS):
 def event(request_type):
     return {
         "RequestType": request_type,
-        "ResourceProperties": {"BucketName": BUCKET, "KeyPrefix": "invocation-logs"},
+        "ResourceProperties": {
+            "BucketName": BUCKET,
+            "KeyPrefix": "invocation-logs",
+            "NotificationTopicArn": "arn:aws:sns:us-east-1:250260913666:onboarding",
+            "DirecteamId": "dtid-test",
+            "AccountId": "111111111111",
+            "Region": "us-east-1",
+            "StackVersion": "v1.1.0",
+        },
     }
 
 
@@ -58,6 +71,20 @@ class BedrockInvocationLoggingTest(unittest.TestCase):
             }
         )
         self.assertEqual(self.sent(cfnresponse)[:2], ("SUCCESS", "enabled"))
+        published = json.loads(function.sns.publish.call_args.kwargs["Message"])
+        self.assertEqual(
+            published,
+            {
+                "feature": "bedrock_invocation_logs",
+                "eventType": "Create",
+                "directeamId": "dtid-test",
+                "accountId": "111111111111",
+                "region": "us-east-1",
+                "bucketName": BUCKET,
+                "status": "enabled",
+                "stackVersion": "v1.1.0",
+            },
+        )
 
     def test_create_includes_video_flag_when_the_sdk_supports_it(self):
         bedrock = bedrock_client(supported_flags=CURRENT_SDK_FLAGS)

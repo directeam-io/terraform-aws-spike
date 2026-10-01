@@ -42,9 +42,22 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "external" {
+  mock_data "external" {
+    defaults = {
+      result = {
+        exists       = "true"
+        stack_name   = "DirecteamFinOpsReadOnlyAccess"
+        stack_status = "CREATE_COMPLETE"
+      }
+    }
+  }
+}
+
 variables {
-  external_id  = "spike-test-external-id"
-  directeam_id = "directeam-test-id"
+  external_id          = "spike-test-external-id"
+  directeam_id         = "directeam-test-id"
+  base_onboarding_mode = "create"
 }
 
 run "organization_whole_org" {
@@ -81,7 +94,7 @@ run "organization_whole_org" {
       directeamId    = "directeam-test-id"
       stackArn       = { Ref = "AWS::StackId" }
       stackName      = "DirecteamFinOpsReadOnlyAccess"
-      stackVersion   = "v1.0.0"
+      stackVersion   = "v1.1.0"
       state          = "finish"
     })
     error_message = "The registration notification must match the CloudFormation onboarding contract."
@@ -151,8 +164,8 @@ run "organization_selected_accounts" {
   }
 
   assert {
-    condition     = aws_cloudformation_stack_set.spike[0].auto_deployment[0].enabled == false
-    error_message = "Auto-deployment must be off when specific accounts are selected, otherwise new accounts would receive the role."
+    condition     = aws_cloudformation_stack_set.spike[0].auto_deployment[0].enabled == true
+    error_message = "Auto-deployment must follow auto_deployment when specific accounts are selected; the INTERSECTION filter still excludes unlisted accounts."
   }
 }
 
@@ -320,6 +333,67 @@ run "single_account_with_cur_and_no_notification" {
   assert {
     condition     = length(aws_cloudformation_stack.registration) == 0
     error_message = "notify_spike = false must skip the registration stack."
+  }
+}
+
+run "existing_account_onboarding_is_preserved" {
+  command = plan
+
+  variables {
+    deployment_mode                = "account"
+    base_onboarding_mode           = "existing"
+    enable_bedrock_invocation_logs = true
+    bedrock_invocation_logs_accounts = {
+      "111111111111" = ["us-east-1"]
+    }
+  }
+
+  assert {
+    condition     = length(aws_iam_role.spike) == 0 && length(aws_iam_policy.spike) == 0 && length(aws_cloudformation_stack.registration) == 0
+    error_message = "Existing CloudFormation onboarding must remain unmanaged by Terraform."
+  }
+
+  assert {
+    condition     = length(aws_s3_bucket.bedrock_logs) == 1 && length(aws_cloudformation_stack.bedrock_registration) == 1
+    error_message = "Bedrock logging and its lifecycle registration must still be deployed."
+  }
+
+  assert {
+    condition     = output.base_onboarding_source == "cloudformation" && output.existing_onboarding_stack_name == "DirecteamFinOpsReadOnlyAccess"
+    error_message = "Outputs must report preserved CloudFormation ownership."
+  }
+}
+
+run "existing_organization_onboarding_is_preserved" {
+  command = plan
+
+  variables {
+    deployment_mode                  = "organization"
+    base_onboarding_mode             = "existing"
+    member_account_ids               = ["222222222222"]
+    enable_bedrock_invocation_logs   = true
+    bedrock_invocation_logs_accounts = { "222222222222" = ["us-east-1"] }
+  }
+
+  override_data {
+    target = data.external.existing_onboarding[0]
+    values = {
+      result = {
+        exists       = "true"
+        stack_name   = "DirecteamFinOpsStackSet"
+        stack_status = "CREATE_COMPLETE"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_cloudformation_stack_set.spike) == 0 && length(aws_bcmdataexports_export.cur) == 0 && length(aws_cloudformation_stack.registration) == 0
+    error_message = "Existing organization onboarding, CUR, and registration must remain CloudFormation-owned."
+  }
+
+  assert {
+    condition     = length(aws_cloudformation_stack_set.bedrock_logs) == 1 && length(aws_cloudformation_stack_instances.bedrock_logs) == 1
+    error_message = "The separate Bedrock StackSet must still be deployed for existing organizations."
   }
 }
 
