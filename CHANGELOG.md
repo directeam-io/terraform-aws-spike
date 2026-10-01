@@ -5,6 +5,12 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-01
+
+### Fixed
+
+- Detect successful AWS-generated `StackSet-DirecteamFinOpsReadOnlyAccess-*` stack instances so existing CloudFormation onboarding is preserved.
+
 ## [1.2.0] - 2026-10-01
 
 ### Added

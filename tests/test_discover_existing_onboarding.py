@@ -73,6 +73,60 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
             },
         )
 
+    def test_stackset_instance_reports_existing_stack(self):
+        stack_name = "StackSet-DirecteamFinOpsReadOnlyAccess-instance-id"
+        missing_base = subprocess.CompletedProcess(
+            args=[],
+            returncode=255,
+            stdout="",
+            stderr="ValidationError: Stack with id DirecteamFinOpsReadOnlyAccess does not exist",
+        )
+        stackset_instances = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({"StackSummaries": [{"StackName": stack_name}]}),
+            stderr="",
+        )
+        stackset_instance = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({
+                "Stacks": [{
+                    "StackId": f"arn:aws:cloudformation:us-east-1:111111111111:stack/{stack_name}/id",
+                    "StackStatus": "CREATE_COMPLETE",
+                    "Parameters": [
+                        {"ParameterKey": "ExternalId", "ParameterValue": "external-789"},
+                        {"ParameterKey": "DirecteamId", "ParameterValue": "dtid-789"},
+                    ],
+                }]
+            }),
+            stderr="",
+        )
+        stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(
+                discovery.subprocess,
+                "run",
+                side_effect=[missing_base, stackset_instances, stackset_instance],
+            ),
+            mock.patch.object(sys, "stdin", stdin),
+            mock.patch.object(sys, "stdout", stdout),
+        ):
+            discovery.main()
+        self.assertEqual(
+            json.loads(stdout.getvalue()),
+            {
+                "exists": "true",
+                "stack_name": stack_name,
+                "stack_status": "CREATE_COMPLETE",
+                "identity_found": "true",
+                "identity_stack_name": stack_name,
+                "external_id": "external-789",
+                "directeam_id": "dtid-789",
+            },
+        )
+
     def test_bootstrap_stack_supplies_identity_without_claiming_base_ownership(self):
         missing_base = subprocess.CompletedProcess(
             args=[],
@@ -98,8 +152,14 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
         )
         stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
         stdout = io.StringIO()
+        no_stackset_instance = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({"StackSummaries": []}),
+            stderr="",
+        )
         with (
-            mock.patch.object(discovery.subprocess, "run", side_effect=[missing_base, bootstrap]),
+            mock.patch.object(discovery.subprocess, "run", side_effect=[missing_base, no_stackset_instance, bootstrap]),
             mock.patch.object(sys, "stdin", stdin),
             mock.patch.object(sys, "stdout", stdout),
         ):

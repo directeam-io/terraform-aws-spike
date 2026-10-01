@@ -59,6 +59,44 @@ def describe_stack(stack_name):
     raise DiscoveryError(f"CloudFormation lookup for {stack_name} failed: {stderr}")
 
 
+def find_stackset_instance(stack_name):
+    try:
+        completed = subprocess.run(
+            [
+                "aws",
+                "cloudformation",
+                "list-stacks",
+                "--region",
+                "us-east-1",
+                "--stack-status-filter",
+                *sorted(SUCCESS_STATUSES),
+                "--output",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except FileNotFoundError as error:
+        raise DiscoveryError("The AWS CLI is required to detect existing onboarding stacks.") from error
+    except subprocess.TimeoutExpired as error:
+        raise DiscoveryError(f"CloudFormation StackSet instance lookup for {stack_name} timed out.") from error
+
+    if completed.returncode != 0:
+        raise DiscoveryError(f"CloudFormation StackSet instance lookup for {stack_name} failed: {completed.stderr.strip()}")
+
+    prefix = f"StackSet-{stack_name}-"
+    matches = [
+        str(summary.get("StackName") or "")
+        for summary in json.loads(completed.stdout or "{}").get("StackSummaries") or []
+        if str(summary.get("StackName") or "").startswith(prefix)
+    ]
+    if len(matches) > 1:
+        raise DiscoveryError(f"Found multiple CloudFormation StackSet instances for {stack_name}: {', '.join(sorted(matches))}.")
+    return matches[0] if matches else None
+
+
 def validate_stack(stack, stack_name, account_id):
     status = str(stack.get("StackStatus") or "")
     if status not in SUCCESS_STATUSES:
@@ -85,6 +123,11 @@ def main():
 
     base_stack_name = BASE_STACK_NAMES[deployment_mode]
     base_stack = describe_stack(base_stack_name)
+    if base_stack is None:
+        stackset_instance_name = find_stackset_instance(base_stack_name)
+        if stackset_instance_name is not None:
+            base_stack_name = stackset_instance_name
+            base_stack = describe_stack(base_stack_name)
     identity_stack_name = base_stack_name
     identity_stack = base_stack
     if identity_stack is None:
