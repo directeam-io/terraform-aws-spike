@@ -379,7 +379,7 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | Name | Description |
 |------|-------------|
 | <a name="output_base_onboarding_created"></a> [base\_onboarding\_created](#output\_base\_onboarding\_created) | Whether this module creates the base read-only onboarding resources. |
-| <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether the base read-only onboarding remains CloudFormation-owned or is managed by Terraform. |
+| <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether base read-only onboarding remains CloudFormation-owned or is managed by Terraform. |
 | <a name="output_bedrock_invocation_log_buckets"></a> [bedrock\_invocation\_log\_buckets](#output\_bedrock\_invocation\_log\_buckets) | Bedrock invocation log bucket in the current account, by region. |
 | <a name="output_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#output\_bedrock\_invocation\_logs\_accounts) | Accounts and regions where Bedrock invocation logging is deployed for Spike. |
 | <a name="output_bedrock_stack_set_id"></a> [bedrock\_stack\_set\_id](#output\_bedrock\_stack\_set\_id) | ID of the Bedrock-only StackSet. Null when no member-account Bedrock logging is deployed. |
