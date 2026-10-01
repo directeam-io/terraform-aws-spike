@@ -67,7 +67,7 @@ locals {
   is_organization    = var.deployment_mode == "organization"
   is_delegated_admin = local.is_organization && var.stackset_call_as == "DELEGATED_ADMIN"
 
-  existing_onboarding_detected   = var.base_onboarding_mode != "create" && data.external.existing_onboarding[0].result.exists == "true"
+  existing_onboarding_detected   = try(data.external.existing_onboarding[0].result.exists == "true", false)
   existing_onboarding_stack_name = local.existing_onboarding_detected ? data.external.existing_onboarding[0].result.stack_name : ""
   manage_base_onboarding         = !local.existing_onboarding_detected
 
@@ -119,16 +119,20 @@ locals {
     if account_id != local.management_account_id && !(local.create_local_role && account_id == local.account_id)
   } : {}
 
-  member_bedrock_logs_accounts_by_region = {
+  member_bedrock_logs_extra_regions = {
     for region in distinct(flatten(values(local.member_bedrock_logs))) :
     region => sort([for account_id, regions in local.member_bedrock_logs : account_id if contains(regions, region)])
+    if region != local.home_region
   }
+  member_bedrock_logs_accounts_by_region = merge(
+    local.member_bedrock_logs_extra_regions,
+    contains(distinct(flatten(values(local.member_bedrock_logs))), local.home_region) ? {
+      (local.home_region) = sort([
+        for account_id, regions in local.member_bedrock_logs : account_id if contains(regions, local.home_region)
+      ])
+    } : {},
+  )
   member_bedrock_logs_enabled = length(local.member_bedrock_logs) > 0
-
-  # The home region is already covered by the organization-wide stack instances.
-  member_bedrock_logs_extra_regions = {
-    for region, accounts in local.member_bedrock_logs_accounts_by_region : region => accounts if region != local.home_region
-  }
 
   deployed_bedrock_logs = merge(
     length(local.local_bedrock_logs_regions) > 0 ? { (local.account_id) = sort(tolist(local.local_bedrock_logs_regions)) } : {},

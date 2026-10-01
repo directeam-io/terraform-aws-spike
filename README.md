@@ -305,8 +305,10 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 |------|------|
 | [aws_bcmdataexports_export.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bcmdataexports_export) | resource |
 | [aws_bedrock_model_invocation_logging_configuration.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrock_model_invocation_logging_configuration) | resource |
+| [aws_cloudformation_stack.bedrock_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack_instances.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
+| [aws_cloudformation_stack_set.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set_instance.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set_instance) | resource |
 | [aws_iam_policy.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
@@ -330,7 +332,7 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_auto_deployment"></a> [auto\_deployment](#input\_auto\_deployment) | Automatically deploy the Spike role to eligible accounts that join the targeted OUs later. When member\_account\_ids is set, only listed accounts are eligible. | `bool` | `true` | no |
-| <a name="input_base_onboarding_mode"></a> [base\_onboarding\_mode](#input\_base\_onboarding\_mode) | Detect and preserve existing Directeam CloudFormation onboarding (`auto`), always create the base resources (`create`), or require existing CloudFormation onboarding (`existing`). | `string` | `"auto"` | no |
+| <a name="input_base_onboarding_mode"></a> [base\_onboarding\_mode](#input\_base\_onboarding\_mode) | Controls ownership of the existing Directeam read-only onboarding resources.<br/>- "auto": detect the matching CloudFormation stack and preserve it when present.<br/>- "create": always create and manage the base role, StackSet, CUR, and registration with Terraform.<br/>- "existing": require the base onboarding to exist and manage only optional Terraform features such as Bedrock logs. | `string` | `"auto"` | no |
 | <a name="input_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#input\_bedrock\_invocation\_logs\_accounts) | Optional override for the accounts and regions that get Bedrock invocation logging, as a map of account ID to<br/>region list. Leave null (default) to discover them automatically from AWS Cost Explorer at plan time: the module<br/>then looks for Bedrock spend in the last bedrock\_invocation\_logs\_lookback\_days days. Set it to pin the list, for<br/>example when Cost Explorer or the AWS CLI isn't available to Terraform, when running as a delegated administrator,<br/>or to add a region that hasn't been billed yet. An empty map deploys nothing.<br/>A dt-bedrock-invocation-logs-<account-id>-<region> bucket is created only for the resulting account/region pairs, readable only<br/>by the Spike role in that account. The buckets only hold a rolling copy for Spike to collect, and are deleted with<br/>their contents when the feature is turned off or an account/region stops using Bedrock. | `map(list(string))` | `null` | no |
 | <a name="input_bedrock_invocation_logs_lookback_days"></a> [bedrock\_invocation\_logs\_lookback\_days](#input\_bedrock\_invocation\_logs\_lookback\_days) | How many days of AWS Cost Explorer data are searched for Bedrock usage when bedrock\_invocation\_logs\_accounts is null. Accounts and regions without Bedrock spend in this window stop being logged. | `number` | `90` | no |
 | <a name="input_bedrock_invocation_logs_retention_days"></a> [bedrock\_invocation\_logs\_retention\_days](#input\_bedrock\_invocation\_logs\_retention\_days) | Days Bedrock invocation logs are kept in each account before they expire. | `number` | `30` | no |
@@ -360,15 +362,15 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | Name | Description |
 |------|-------------|
 | <a name="output_base_onboarding_created"></a> [base\_onboarding\_created](#output\_base\_onboarding\_created) | Whether this module creates the base read-only onboarding resources. |
-| <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether base onboarding is managed by Terraform or preserved in CloudFormation. |
+| <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether the base read-only onboarding remains CloudFormation-owned or is managed by Terraform. |
 | <a name="output_bedrock_invocation_log_buckets"></a> [bedrock\_invocation\_log\_buckets](#output\_bedrock\_invocation\_log\_buckets) | Bedrock invocation log bucket in the current account, by region. |
 | <a name="output_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#output\_bedrock\_invocation\_logs\_accounts) | Accounts and regions where Bedrock invocation logging is deployed for Spike. |
-| <a name="output_bedrock_stack_set_id"></a> [bedrock\_stack\_set\_id](#output\_bedrock\_stack\_set\_id) | ID of the Bedrock-only StackSet. |
-| <a name="output_bedrock_stack_set_name"></a> [bedrock\_stack\_set\_name](#output\_bedrock\_stack\_set\_name) | Name of the Bedrock-only StackSet. |
+| <a name="output_bedrock_stack_set_id"></a> [bedrock\_stack\_set\_id](#output\_bedrock\_stack\_set\_id) | ID of the Bedrock-only StackSet. Null when no member-account Bedrock logging is deployed. |
+| <a name="output_bedrock_stack_set_name"></a> [bedrock\_stack\_set\_name](#output\_bedrock\_stack\_set\_name) | Name of the Bedrock-only StackSet. Null when no member-account Bedrock logging is deployed. |
 | <a name="output_cur_bucket_arn"></a> [cur\_bucket\_arn](#output\_cur\_bucket\_arn) | ARN of the CUR 2.0 bucket. Null when no export is created in this account. |
 | <a name="output_cur_bucket_name"></a> [cur\_bucket\_name](#output\_cur\_bucket\_name) | S3 bucket that receives the CUR 2.0 export. Null when no export is created in this account. |
 | <a name="output_cur_export_arn"></a> [cur\_export\_arn](#output\_cur\_export\_arn) | ARN of the CUR 2.0 data export. Null when no export is created in this account. |
-| <a name="output_existing_onboarding_stack_name"></a> [existing\_onboarding\_stack\_name](#output\_existing\_onboarding\_stack\_name) | Existing CloudFormation onboarding stack preserved by Terraform. |
+| <a name="output_existing_onboarding_stack_name"></a> [existing\_onboarding\_stack\_name](#output\_existing\_onboarding\_stack\_name) | Detected or declared existing CloudFormation onboarding stack name. |
 | <a name="output_member_account_ids"></a> [member\_account\_ids](#output\_member\_account\_ids) | Member accounts that received the Spike role through the StackSet. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | ARN of the Spike role in the current account. Null when running as a StackSets delegated administrator. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | Name of the Spike role, identical in every account it's deployed to. |
