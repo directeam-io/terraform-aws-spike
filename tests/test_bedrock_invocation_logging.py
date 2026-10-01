@@ -130,7 +130,7 @@ class BedrockInvocationLoggingTest(unittest.TestCase):
 
         bedrock.delete_model_invocation_logging_configuration.assert_called_once()
         s3.Bucket.assert_called_once_with(BUCKET)
-        s3.Bucket.return_value.objects.all.return_value.delete.assert_called_once()
+        s3.Bucket.return_value.object_versions.all.return_value.delete.assert_called_once()
         self.assertEqual(self.sent(cfnresponse)[:2], ("SUCCESS", "removed"))
 
     def test_delete_leaves_customer_configuration_in_place(self):

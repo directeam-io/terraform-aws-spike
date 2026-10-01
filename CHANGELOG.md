@@ -17,6 +17,7 @@ All notable changes to this module are documented here. The format follows
 
 - Base read-only roles, StackSets, CUR exports, and registration resources remain CloudFormation-owned when existing onboarding is detected.
 - Bedrock invocation logging is deployed independently from the base read-only StackSet.
+- CUR and Bedrock log buckets use rotating customer-managed KMS keys, versioning, and noncurrent-version lifecycle cleanup.
 
 ## [1.0.0] - 2026-09-29
 

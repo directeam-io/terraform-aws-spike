@@ -126,6 +126,11 @@ run "organization_whole_org" {
   }
 
   assert {
+    condition     = aws_kms_key.cur[0].enable_key_rotation && aws_s3_bucket_versioning.cur[0].versioning_configuration[0].status == "Enabled" && one(one(aws_s3_bucket_server_side_encryption_configuration.cur[0].rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms"
+    error_message = "The CUR bucket must use a rotating customer-managed KMS key and versioning."
+  }
+
+  assert {
     condition     = length(aws_cloudformation_stack.registration) == 1
     error_message = "Spike must be notified by default."
   }

@@ -2,6 +2,84 @@
 # Current account - configured natively, one bucket per listed region
 ################################################################################
 
+data "aws_iam_policy_document" "bedrock_logs_kms" {
+  for_each = local.local_bedrock_logs_regions
+
+  statement {
+    sid       = "EnableAccountAdministration"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid    = "AllowBedrockEncryption"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:Encrypt",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["bedrock.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:bedrock:${each.key}:${local.account_id}:*"]
+    }
+  }
+
+  statement {
+    sid       = "AllowSpikeDecrypt"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:DescribeKey"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account_id}:role/${local.role_name}"]
+    }
+  }
+}
+
+resource "aws_kms_key" "bedrock_logs" {
+  for_each = local.local_bedrock_logs_regions
+
+  region                  = each.key
+  description             = "Encrypts Directeam Bedrock invocation logs in ${each.key}"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.bedrock_logs_kms[each.key].json
+  tags                    = local.tags
+
+  depends_on = [aws_iam_role.spike]
+}
+
+resource "aws_kms_alias" "bedrock_logs" {
+  for_each = aws_kms_key.bedrock_logs
+
+  region        = each.key
+  name          = "alias/directeam-finops-bedrock-logs-${each.key}"
+  target_key_id = each.value.key_id
+}
+
 resource "aws_s3_bucket" "bedrock_logs" {
   for_each = local.local_bedrock_logs_regions
 
@@ -9,6 +87,17 @@ resource "aws_s3_bucket" "bedrock_logs" {
   bucket        = "${local.bedrock_logs_bucket_prefix}-${local.account_id}-${each.key}"
   force_destroy = true
   tags          = local.tags
+}
+
+resource "aws_s3_bucket_versioning" "bedrock_logs" {
+  for_each = aws_s3_bucket.bedrock_logs
+
+  region = each.key
+  bucket = each.value.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_ownership_controls" "bedrock_logs" {
@@ -40,8 +129,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "bedrock_logs" {
   bucket = each.value.id
 
   rule {
+    bucket_key_enabled = true
+
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.bedrock_logs[each.key].arn
+      sse_algorithm     = "aws:kms"
     }
   }
 }
@@ -62,10 +154,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "bedrock_logs" {
       days = var.bedrock_invocation_logs_retention_days
     }
 
+    noncurrent_version_expiration {
+      noncurrent_days = var.bedrock_invocation_logs_retention_days
+    }
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
   }
+
+  depends_on = [aws_s3_bucket_versioning.bedrock_logs]
 }
 
 data "aws_iam_policy_document" "bedrock_logs_bucket" {
@@ -144,6 +242,8 @@ resource "aws_bedrock_model_invocation_logging_configuration" "spike" {
   depends_on = [
     aws_s3_bucket_ownership_controls.bedrock_logs,
     aws_s3_bucket_policy.bedrock_logs,
+    aws_s3_bucket_server_side_encryption_configuration.bedrock_logs,
+    aws_s3_bucket_versioning.bedrock_logs,
   ]
 }
 
@@ -169,6 +269,13 @@ data "aws_iam_policy_document" "bedrock_logs_read" {
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${each.value.arn}/*"]
+  }
+
+  statement {
+    sid       = "DecryptInvocationLogs"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:DescribeKey"]
+    resources = [aws_kms_key.bedrock_logs[each.key].arn]
   }
 }
 
@@ -214,13 +321,68 @@ locals {
   }
 
   bedrock_logs_member_resource_definitions = {
+    BedrockLogKey = {
+      Type = "AWS::KMS::Key"
+      Properties = {
+        Description         = "Encrypts Directeam Bedrock invocation logs"
+        EnableKeyRotation   = true
+        PendingWindowInDays = 30
+        KeyPolicy = {
+          Version = "2012-10-17"
+          Statement = [
+            {
+              Sid       = "EnableAccountAdministration"
+              Effect    = "Allow"
+              Principal = { AWS = { "Fn::Sub" = "arn:aws:iam::$${AWS::AccountId}:root" } }
+              Action    = "kms:*"
+              Resource  = "*"
+            },
+            {
+              Sid       = "AllowBedrockEncryption"
+              Effect    = "Allow"
+              Principal = { Service = "bedrock.amazonaws.com" }
+              Action    = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+              Resource  = "*"
+              Condition = {
+                StringEquals = { "aws:SourceAccount" = { Ref = "AWS::AccountId" } }
+                ArnLike      = { "aws:SourceArn" = { "Fn::Sub" = "arn:aws:bedrock:$${AWS::Region}:$${AWS::AccountId}:*" } }
+              }
+            },
+            {
+              Sid       = "AllowSpikeDecrypt"
+              Effect    = "Allow"
+              Principal = { AWS = { "Fn::Sub" = "arn:aws:iam::$${AWS::AccountId}:role/${local.role_name}" } }
+              Action    = ["kms:Decrypt", "kms:DescribeKey"]
+              Resource  = "*"
+            },
+          ]
+        }
+        Tags = local.bedrock_logs_template_tags
+      }
+    }
+
+    BedrockLogKeyAlias = {
+      Type = "AWS::KMS::Alias"
+      Properties = {
+        AliasName   = { "Fn::Sub" = "alias/directeam-finops-bedrock-logs-$${AWS::Region}" }
+        TargetKeyId = { Ref = "BedrockLogKey" }
+      }
+    }
+
     BedrockLogBucket = {
       Type = "AWS::S3::Bucket"
       Properties = {
         BucketName = { "Fn::Sub" = "${local.bedrock_logs_bucket_prefix}-$${AWS::AccountId}-$${AWS::Region}" }
         BucketEncryption = {
-          ServerSideEncryptionConfiguration = [{ ServerSideEncryptionByDefault = { SSEAlgorithm = "AES256" } }]
+          ServerSideEncryptionConfiguration = [{
+            BucketKeyEnabled = true
+            ServerSideEncryptionByDefault = {
+              KMSMasterKeyID = { "Fn::GetAtt" = ["BedrockLogKey", "Arn"] }
+              SSEAlgorithm   = "aws:kms"
+            }
+          }]
         }
+        VersioningConfiguration = { Status = "Enabled" }
         PublicAccessBlockConfiguration = {
           BlockPublicAcls       = true
           BlockPublicPolicy     = true
@@ -233,6 +395,7 @@ locals {
             Id                             = "ExpireInvocationLogs"
             Status                         = "Enabled"
             ExpirationInDays               = var.bedrock_invocation_logs_retention_days
+            NoncurrentVersionExpiration    = { NoncurrentDays = var.bedrock_invocation_logs_retention_days }
             AbortIncompleteMultipartUpload = { DaysAfterInitiation = 7 }
           }]
         }
@@ -312,7 +475,7 @@ locals {
               {
                 Sid      = "InspectLogBucket"
                 Effect   = "Allow"
-                Action   = ["s3:ListBucket", "s3:GetBucketLocation", "s3:GetBucketPolicy"]
+                Action   = ["s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketLocation", "s3:GetBucketPolicy"]
                 Resource = { "Fn::GetAtt" = ["BedrockLogBucket", "Arn"] }
               },
               {
@@ -381,6 +544,12 @@ locals {
               Effect   = "Allow"
               Action   = "s3:GetObject"
               Resource = { "Fn::Sub" = "$${BedrockLogBucket.Arn}/*" }
+            },
+            {
+              Sid      = "DecryptInvocationLogs"
+              Effect   = "Allow"
+              Action   = ["kms:Decrypt", "kms:DescribeKey"]
+              Resource = { "Fn::GetAtt" = ["BedrockLogKey", "Arn"] }
             },
           ]
         }

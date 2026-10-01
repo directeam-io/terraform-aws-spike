@@ -1,3 +1,73 @@
+data "aws_iam_policy_document" "cur_kms" {
+  count = local.create_cur_export ? 1 : 0
+
+  statement {
+    sid       = "EnableAccountAdministration"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid    = "AllowDataExportEncryption"
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:Encrypt",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["bcm-data-exports.amazonaws.com", "billingreports.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid       = "AllowSpikeDecrypt"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:DescribeKey"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [local.spike_cur_reader_arn]
+    }
+  }
+}
+
+resource "aws_kms_key" "cur" {
+  count = local.create_cur_export ? 1 : 0
+
+  region                  = local.home_region
+  description             = "Encrypts the Directeam CUR 2.0 bucket"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.cur_kms[0].json
+  tags                    = local.tags
+}
+
+resource "aws_kms_alias" "cur" {
+  count = local.create_cur_export ? 1 : 0
+
+  region        = local.home_region
+  name          = "alias/directeam-finops-cur-${local.account_id}"
+  target_key_id = aws_kms_key.cur[0].key_id
+}
+
 resource "aws_s3_bucket" "cur" {
   count = local.create_cur_export ? 1 : 0
 
@@ -5,6 +75,17 @@ resource "aws_s3_bucket" "cur" {
   bucket        = local.cur_bucket_name
   force_destroy = var.cur_bucket_force_destroy
   tags          = local.tags
+}
+
+resource "aws_s3_bucket_versioning" "cur" {
+  count = local.create_cur_export ? 1 : 0
+
+  region = local.home_region
+  bucket = aws_s3_bucket.cur[0].id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_ownership_controls" "cur" {
@@ -36,10 +117,37 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "cur" {
   bucket = aws_s3_bucket.cur[0].id
 
   rule {
+    bucket_key_enabled = true
+
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.cur[0].arn
+      sse_algorithm     = "aws:kms"
     }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cur" {
+  count = local.create_cur_export ? 1 : 0
+
+  region = local.home_region
+  bucket = aws_s3_bucket.cur[0].id
+
+  rule {
+    id     = "ManageReportVersions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.cur]
 }
 
 data "aws_iam_policy_document" "cur_bucket" {
@@ -167,5 +275,9 @@ resource "aws_bcmdataexports_export" "cur" {
 
   tags = local.tags
 
-  depends_on = [aws_s3_bucket_policy.cur]
+  depends_on = [
+    aws_s3_bucket_policy.cur,
+    aws_s3_bucket_server_side_encryption_configuration.cur,
+    aws_s3_bucket_versioning.cur,
+  ]
 }

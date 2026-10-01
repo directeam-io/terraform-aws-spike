@@ -54,7 +54,7 @@ Spike is notified automatically when `apply` finishes, and onboarding completes 
 | --- | --- | --- |
 | IAM role | `DirecteamFinOpsReadOnlyAccess` | Assumed by Spike. Trusts only Directeam's `DirecteamAccessDelegator` roles, and only with your External ID. Max session 1 hour. |
 | IAM managed policies | `DirecteamFinOpsReadOnlyAccess-*` | Read-only permissions, split across several policies to stay within IAM size limits. See [`policies/`](policies). |
-| S3 bucket (organization mode, or `enable_cur_export`) | `dt-cur-<account-id>` | Receives the CUR 2.0 export. Public access blocked, SSE-S3 encryption, TLS-only, bucket-owner-enforced. Spike's `DirecteamCurDataAccess` role can only list and read. |
+| S3 bucket (organization mode, or `enable_cur_export`) | `dt-cur-<account-id>` | Receives the CUR 2.0 export. Public access blocked, customer-managed KMS encryption, versioned, TLS-only, bucket-owner-enforced. Spike's `DirecteamCurDataAccess` role can only list, read, and decrypt. |
 | CUR 2.0 data export (organization mode, or `enable_cur_export`) | `dt-cur-parquet-<account-id>` | Hourly, resource-level Parquet export. |
 | CloudFormation stack | `DirecteamFinOpsRegistration` | Notifies Spike that onboarding finished (disable with `notify_spike = false`). |
 
@@ -266,7 +266,7 @@ are written under `invocation-logs/AWSLogs/<account-id>/BedrockModelInvocationLo
 | --- | --- |
 | What is logged | Metadata only: model, caller identity, token counts. Prompts, responses, embeddings, images, and video are never delivered. |
 | Who can read it | Only the `DirecteamFinOpsReadOnlyAccess` role in the same account, through a `BedrockInvocationLogsRead-<region>` inline policy scoped to that one bucket. |
-| Retention | Objects expire after `bedrock_invocation_logs_retention_days` (default 30). |
+| Retention | Buckets use rotating customer-managed KMS keys and versioning. Current and noncurrent objects expire after `bedrock_invocation_logs_retention_days` (default 30). |
 | Account you run Terraform in (and account mode) | Configured directly by Terraform. **This replaces any invocation logging configuration you already have in the regions that use Bedrock.** |
 | Member accounts (organization mode) | Deployed through the separate `DirecteamBedrockInvocationLogs` StackSet. Each member stack checks the account/region map and only creates logging resources where Bedrock is used. A small Lambda configures logging, publishes account/Region lifecycle status to Directeam, and **leaves customer-owned invocation logging unchanged**. |
 | Removal | Logging is turned off and the buckets are emptied and deleted. Configurations you created yourself are never touched. |
@@ -315,9 +315,14 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | [aws_iam_role.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.bedrock_logs_read](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_kms_alias.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
+| [aws_kms_alias.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
+| [aws_kms_key.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key) | resource |
+| [aws_kms_key.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key) | resource |
 | [aws_s3_bucket.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
 | [aws_s3_bucket.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
 | [aws_s3_bucket_lifecycle_configuration.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_lifecycle_configuration) | resource |
+| [aws_s3_bucket_lifecycle_configuration.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_lifecycle_configuration) | resource |
 | [aws_s3_bucket_ownership_controls.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_ownership_controls) | resource |
 | [aws_s3_bucket_ownership_controls.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_ownership_controls) | resource |
 | [aws_s3_bucket_policy.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy) | resource |
@@ -326,6 +331,8 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | [aws_s3_bucket_public_access_block.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block) | resource |
 | [aws_s3_bucket_server_side_encryption_configuration.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
 | [aws_s3_bucket_server_side_encryption_configuration.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
+| [aws_s3_bucket_versioning.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
+| [aws_s3_bucket_versioning.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
 
 ### Inputs
 

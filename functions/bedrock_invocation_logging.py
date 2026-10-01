@@ -58,7 +58,7 @@ def handler(event, context):
         if event["RequestType"] == "Delete":
             if points_to(config, bucket):
                 bedrock.delete_model_invocation_logging_configuration()
-            s3.Bucket(bucket).objects.all().delete()
+            s3.Bucket(bucket).object_versions.all().delete()
             status = "removed"
         elif config and not points_to(config, bucket):
             status = "skipped-existing-configuration"

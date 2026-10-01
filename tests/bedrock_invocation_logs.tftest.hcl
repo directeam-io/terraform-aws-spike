@@ -129,6 +129,11 @@ run "single_account" {
   }
 
   assert {
+    condition     = aws_kms_key.bedrock_logs["us-east-1"].enable_key_rotation && aws_s3_bucket_versioning.bedrock_logs["us-east-1"].versioning_configuration[0].status == "Enabled" && one(one(aws_s3_bucket_server_side_encryption_configuration.bedrock_logs["us-east-1"].rule).apply_server_side_encryption_by_default).sse_algorithm == "aws:kms"
+    error_message = "Bedrock log buckets must use rotating customer-managed KMS keys and versioning."
+  }
+
+  assert {
     condition     = toset(keys(aws_iam_role_policy.bedrock_logs_read)) == toset(["us-east-1", "eu-west-1"]) && aws_iam_role_policy.bedrock_logs_read["eu-west-1"].name == "BedrockInvocationLogsRead-eu-west-1"
     error_message = "The Spike role must get one read policy per log bucket."
   }
@@ -180,6 +185,11 @@ run "organization" {
   assert {
     condition     = length(aws_cloudformation_stack_set.spike) == 1 && length(aws_cloudformation_stack_set.bedrock_logs) == 1 && !strcontains(local.member_template_body, "BedrockInvocationLogging") && strcontains(local.bedrock_member_template_body, "BedrockInvocationLogging")
     error_message = "Bedrock invocation logs must use a separate StackSet from the read-only role."
+  }
+
+  assert {
+    condition     = local.bedrock_member_template.Resources.BedrockLogKey.Type == "AWS::KMS::Key" && local.bedrock_member_template.Resources.BedrockLogBucket.Properties.VersioningConfiguration.Status == "Enabled" && local.bedrock_member_template.Resources.BedrockLogBucket.Properties.BucketEncryption.ServerSideEncryptionConfiguration[0].ServerSideEncryptionByDefault.SSEAlgorithm == "aws:kms"
+    error_message = "Member-account Bedrock buckets must use customer-managed KMS encryption and versioning."
   }
 
   assert {
