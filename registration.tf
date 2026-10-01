@@ -7,7 +7,7 @@ locals {
         ServiceTimeout = var.notification_timeout
         feature        = "bedrock_invocation_logs"
         eventStatus    = "enabled"
-        directeamId    = var.directeam_id
+        directeamId    = local.directeam_id
         accountId      = local.account_id
         region         = region
         bucketName     = "${local.bedrock_logs_bucket_prefix}-${local.account_id}-${region}"
@@ -35,7 +35,7 @@ resource "aws_cloudformation_stack" "registration" {
           ServiceToken   = var.notification_topic_arn
           ServiceTimeout = var.notification_timeout
           stackArn       = { Ref = "AWS::StackId" }
-          directeamId    = var.directeam_id
+          directeamId    = local.directeam_id
           state          = "finish"
           stackName      = local.role_name
           stackVersion   = "v${local.module_version}"

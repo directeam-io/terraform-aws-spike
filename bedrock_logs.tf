@@ -2,6 +2,12 @@
 # Current account - configured natively, one bucket per listed region
 ################################################################################
 
+data "aws_iam_role" "bedrock_logs_reader" {
+  count = length(local.local_bedrock_logs_regions) > 0 && !local.create_local_role ? 1 : 0
+
+  name = local.role_name
+}
+
 data "aws_iam_policy_document" "bedrock_logs_kms" {
   for_each = local.local_bedrock_logs_regions
 
@@ -53,8 +59,10 @@ data "aws_iam_policy_document" "bedrock_logs_kms" {
     resources = ["*"]
 
     principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.account_id}:role/${local.role_name}"]
+      type = "AWS"
+      identifiers = [
+        local.create_local_role ? aws_iam_role.spike[0].arn : data.aws_iam_role.bedrock_logs_reader[0].arn,
+      ]
     }
   }
 }
@@ -283,10 +291,8 @@ resource "aws_iam_role_policy" "bedrock_logs_read" {
   for_each = aws_s3_bucket.bedrock_logs
 
   name   = "BedrockInvocationLogsRead-${each.key}"
-  role   = local.role_name
+  role   = local.create_local_role ? aws_iam_role.spike[0].name : data.aws_iam_role.bedrock_logs_reader[0].name
   policy = data.aws_iam_policy_document.bedrock_logs_read[each.key].json
-
-  depends_on = [aws_iam_role.spike]
 }
 
 ################################################################################
@@ -627,7 +633,7 @@ resource "aws_cloudformation_stack_set" "bedrock_logs" {
   template_body    = local.bedrock_member_template_body
 
   parameters = {
-    DirecteamId = var.directeam_id
+    DirecteamId = local.directeam_id
   }
 
   managed_execution {

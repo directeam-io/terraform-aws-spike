@@ -5,6 +5,16 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_cloudformation_stack" {
+    defaults = {
+      name = "DirecteamTerraformBootstrap"
+      parameters = {
+        ExternalId  = "bootstrap-external-id"
+        DirecteamId = "bootstrap-directeam-id"
+      }
+    }
+  }
+
   mock_data "aws_organizations_organization" {
     defaults = {
       master_account_id = "111111111111"
@@ -20,6 +30,13 @@ mock_provider "aws" {
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
+  mock_data "aws_iam_role" {
+    defaults = {
+      name = "DirecteamFinOpsReadOnlyAccess"
+      arn  = "arn:aws:iam::111111111111:role/DirecteamFinOpsReadOnlyAccess"
     }
   }
 
@@ -46,9 +63,13 @@ mock_provider "external" {
   mock_data "external" {
     defaults = {
       result = {
-        exists       = "true"
-        stack_name   = "DirecteamFinOpsReadOnlyAccess"
-        stack_status = "CREATE_COMPLETE"
+        exists              = "true"
+        stack_name          = "DirecteamFinOpsReadOnlyAccess"
+        stack_status        = "CREATE_COMPLETE"
+        identity_found      = "true"
+        identity_stack_name = "DirecteamFinOpsReadOnlyAccess"
+        external_id         = "spike-test-external-id"
+        directeam_id        = "directeam-test-id"
       }
     }
   }
@@ -94,7 +115,7 @@ run "organization_whole_org" {
       directeamId    = "directeam-test-id"
       stackArn       = { Ref = "AWS::StackId" }
       stackName      = "DirecteamFinOpsReadOnlyAccess"
-      stackVersion   = "v1.1.0"
+      stackVersion   = "v1.2.0"
       state          = "finish"
     })
     error_message = "The registration notification must match the CloudFormation onboarding contract."
@@ -264,7 +285,7 @@ run "organization_delegated_admin" {
   }
 }
 
-run "organization_ignores_disabling_cur_export" {
+run "organization_can_disable_cur_export" {
   command = plan
 
   variables {
@@ -273,11 +294,9 @@ run "organization_ignores_disabling_cur_export" {
   }
 
   assert {
-    condition     = length(aws_bcmdataexports_export.cur) == 1
-    error_message = "The management account must always create the CUR export in organization mode."
+    condition     = length(aws_bcmdataexports_export.cur) == 0
+    error_message = "enable_cur_export = false must disable the CUR export in organization mode."
   }
-
-  expect_failures = [check.cur_export_setting_ignored_in_organization_mode]
 }
 
 run "organization_from_member_account_fails" {
@@ -338,6 +357,99 @@ run "single_account_with_cur_and_no_notification" {
   assert {
     condition     = length(aws_cloudformation_stack.registration) == 0
     error_message = "notify_spike = false must skip the registration stack."
+  }
+}
+
+run "missing_onboarding_identity_fails" {
+  command = plan
+
+  variables {
+    deployment_mode      = "account"
+    base_onboarding_mode = "create"
+    external_id          = null
+    directeam_id         = null
+  }
+
+  override_data {
+    target = data.aws_cloudformation_stack.bootstrap[0]
+    values = {
+      name = "DirecteamTerraformBootstrap"
+      parameters = {
+        ExternalId  = ""
+        DirecteamId = ""
+      }
+    }
+  }
+
+  expect_failures = [data.aws_cloudformation_stack.bootstrap[0]]
+}
+
+run "bootstrap_identity_creates_account_onboarding" {
+  command = plan
+
+  variables {
+    deployment_mode      = "account"
+    base_onboarding_mode = "create"
+    external_id          = null
+    directeam_id         = null
+  }
+
+  assert {
+    condition     = length(aws_iam_role.spike) == 1 && length(aws_cloudformation_stack.registration) == 1
+    error_message = "A bootstrap-only installation must create the account onboarding resources."
+  }
+
+  assert {
+    condition     = output.onboarding_identity_source == "cloudformation" && output.onboarding_identity_stack_name == "DirecteamTerraformBootstrap" && output.base_onboarding_source == "terraform"
+    error_message = "The bootstrap stack must supply identity without claiming ownership of base onboarding."
+  }
+
+  assert {
+    condition     = jsondecode(aws_cloudformation_stack.registration[0].template_body).Resources.SpikeRegistration.Properties.directeamId == "bootstrap-directeam-id"
+    error_message = "Registration must use the Directeam ID discovered from the bootstrap stack."
+  }
+}
+
+run "existing_onboarding_takes_precedence" {
+  command = plan
+
+  variables {
+    deployment_mode                = "account"
+    base_onboarding_mode           = "auto"
+    enable_bedrock_invocation_logs = true
+    bedrock_invocation_logs_accounts = {
+      "111111111111" = ["us-east-1", "eu-west-1"]
+    }
+  }
+
+  override_data {
+    target = data.external.existing_onboarding[0]
+    values = {
+      result = {
+        exists              = "true"
+        stack_name          = "DirecteamFinOpsReadOnlyAccess"
+        stack_status        = "CREATE_COMPLETE"
+        identity_found      = "true"
+        identity_stack_name = "DirecteamFinOpsReadOnlyAccess"
+        external_id         = "spike-test-external-id"
+        directeam_id        = "directeam-test-id"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_iam_role.spike) == 0 && length(aws_iam_policy.spike) == 0 && length(aws_cloudformation_stack.registration) == 0
+    error_message = "The module must not recreate or claim existing core onboarding."
+  }
+
+  assert {
+    condition     = output.base_onboarding_source == "cloudformation" && output.onboarding_identity_source == "cloudformation" && output.existing_onboarding_stack_name == "DirecteamFinOpsReadOnlyAccess"
+    error_message = "Existing CloudFormation onboarding must always take precedence."
+  }
+
+  assert {
+    condition     = toset(keys(aws_s3_bucket.bedrock_logs)) == toset(["us-east-1", "eu-west-1"]) && length(aws_cloudformation_stack.bedrock_registration) == 1
+    error_message = "Optional Bedrock logging and Spike lifecycle notification must remain available beside existing core onboarding."
   }
 }
 

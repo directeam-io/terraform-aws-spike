@@ -5,6 +5,17 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-01
+
+### Added
+
+- Automatic onboarding identity discovery from existing `DirecteamFinOpsStackSet`, `DirecteamFinOpsReadOnlyAccess`, or `DirecteamTerraformBootstrap` CloudFormation stack parameters.
+
+### Changed
+
+- `external_id` and `directeam_id` are optional compatibility fallbacks; standard installations use the Spike-generated bootstrap stack and do not pass them in Terraform configuration.
+- `enable_cur_export = false` now disables CUR creation in organization mode; leaving it null preserves the default management-account export.
+
 ## [1.1.0] - 2026-10-01
 
 ### Added

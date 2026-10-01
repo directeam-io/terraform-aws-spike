@@ -40,7 +40,16 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
         completed = subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout=json.dumps({"Stacks": [{"StackId": stack_id, "StackStatus": "CREATE_COMPLETE"}]}),
+            stdout=json.dumps({
+                "Stacks": [{
+                    "StackId": stack_id,
+                    "StackStatus": "CREATE_COMPLETE",
+                    "Parameters": [
+                        {"ParameterKey": "ExternalId", "ParameterValue": "external-123"},
+                        {"ParameterKey": "DirecteamId", "ParameterValue": "dtid-123"},
+                    ],
+                }]
+            }),
             stderr="",
         )
         stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
@@ -57,6 +66,54 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                 "exists": "true",
                 "stack_name": "DirecteamFinOpsReadOnlyAccess",
                 "stack_status": "CREATE_COMPLETE",
+                "identity_found": "true",
+                "identity_stack_name": "DirecteamFinOpsReadOnlyAccess",
+                "external_id": "external-123",
+                "directeam_id": "dtid-123",
+            },
+        )
+
+    def test_bootstrap_stack_supplies_identity_without_claiming_base_ownership(self):
+        missing_base = subprocess.CompletedProcess(
+            args=[],
+            returncode=255,
+            stdout="",
+            stderr="ValidationError: Stack with id DirecteamFinOpsReadOnlyAccess does not exist",
+        )
+        bootstrap_id = "arn:aws:cloudformation:us-east-1:111111111111:stack/DirecteamTerraformBootstrap/id"
+        bootstrap = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({
+                "Stacks": [{
+                    "StackId": bootstrap_id,
+                    "StackStatus": "CREATE_COMPLETE",
+                    "Parameters": [
+                        {"ParameterKey": "ExternalId", "ParameterValue": "external-456"},
+                        {"ParameterKey": "DirecteamId", "ParameterValue": "dtid-456"},
+                    ],
+                }]
+            }),
+            stderr="",
+        )
+        stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
+        stdout = io.StringIO()
+        with (
+            mock.patch.object(discovery.subprocess, "run", side_effect=[missing_base, bootstrap]),
+            mock.patch.object(sys, "stdin", stdin),
+            mock.patch.object(sys, "stdout", stdout),
+        ):
+            discovery.main()
+        self.assertEqual(
+            json.loads(stdout.getvalue()),
+            {
+                "exists": "false",
+                "stack_name": "",
+                "stack_status": "",
+                "identity_found": "true",
+                "identity_stack_name": "DirecteamTerraformBootstrap",
+                "external_id": "external-456",
+                "directeam_id": "dtid-456",
             },
         )
 

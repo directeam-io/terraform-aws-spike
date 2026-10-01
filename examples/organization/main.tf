@@ -4,7 +4,5 @@
 module "spike" {
   source = "../.."
 
-  external_id     = var.external_id
-  directeam_id    = var.directeam_id
   deployment_mode = "organization"
 }

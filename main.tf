@@ -1,5 +1,18 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_cloudformation_stack" "bootstrap" {
+  count = var.base_onboarding_mode == "create" && (var.external_id == null || var.directeam_id == null) ? 1 : 0
+
+  name = "DirecteamTerraformBootstrap"
+
+  lifecycle {
+    postcondition {
+      condition     = try(length(self.parameters.ExternalId) >= 2 && length(self.parameters.DirecteamId) >= 2, false)
+      error_message = "DirecteamTerraformBootstrap must contain ExternalId and DirecteamId parameters."
+    }
+  }
+}
+
 data "external" "existing_onboarding" {
   count = var.base_onboarding_mode != "create" ? 1 : 0
 
@@ -8,6 +21,13 @@ data "external" "existing_onboarding" {
   query = {
     account_id      = local.account_id
     deployment_mode = var.deployment_mode
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.result.identity_found == "true", false) || (var.external_id != null && var.directeam_id != null)
+      error_message = "Install the Spike-generated DirecteamTerraformBootstrap stack before running Terraform, or provide external_id and directeam_id as compatibility fallbacks."
+    }
   }
 }
 
@@ -45,7 +65,7 @@ data "aws_organizations_organization" "current" {
 }
 
 locals {
-  module_version = "1.1.0"
+  module_version = "1.2.0"
 
   role_name                       = "DirecteamFinOpsReadOnlyAccess"
   stack_set_name                  = "DirecteamFinOpsReadOnlyAccess"
@@ -67,6 +87,12 @@ locals {
   is_organization    = var.deployment_mode == "organization"
   is_delegated_admin = local.is_organization && var.stackset_call_as == "DELEGATED_ADMIN"
 
+  existing_identity_discovered   = try(data.external.existing_onboarding[0].result.identity_found == "true", false)
+  bootstrap_identity_discovered  = length(data.aws_cloudformation_stack.bootstrap) > 0
+  identity_discovered            = local.existing_identity_discovered || local.bootstrap_identity_discovered
+  external_id                    = local.existing_identity_discovered ? data.external.existing_onboarding[0].result.external_id : local.bootstrap_identity_discovered ? try(data.aws_cloudformation_stack.bootstrap[0].parameters.ExternalId, var.external_id != null ? var.external_id : "") : var.external_id != null ? var.external_id : ""
+  directeam_id                   = local.existing_identity_discovered ? data.external.existing_onboarding[0].result.directeam_id : local.bootstrap_identity_discovered ? try(data.aws_cloudformation_stack.bootstrap[0].parameters.DirecteamId, var.directeam_id != null ? var.directeam_id : "") : var.directeam_id != null ? var.directeam_id : ""
+  identity_stack_name            = local.existing_identity_discovered ? data.external.existing_onboarding[0].result.identity_stack_name : local.bootstrap_identity_discovered ? data.aws_cloudformation_stack.bootstrap[0].name : ""
   existing_onboarding_detected   = try(data.external.existing_onboarding[0].result.exists == "true", false)
   existing_onboarding_stack_name = local.existing_onboarding_detected ? data.external.existing_onboarding[0].result.stack_name : ""
   manage_base_onboarding         = !local.existing_onboarding_detected
@@ -76,7 +102,7 @@ locals {
   configure_local_bedrock = !local.is_delegated_admin
   # Spike needs one CUR export, from the management account, which sees every account's costs. Account mode only
   # creates it when asked to (the management account itself, or a standalone account).
-  create_cur_export = local.manage_base_onboarding && (local.is_organization ? !local.is_delegated_admin : coalesce(var.enable_cur_export, false))
+  create_cur_export = local.manage_base_onboarding && !local.is_delegated_admin && coalesce(var.enable_cur_export, local.is_organization)
   deploy_stack_set  = local.manage_base_onboarding && local.is_organization
 
   organization           = one(data.aws_organizations_organization.current)

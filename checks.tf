@@ -25,10 +25,3 @@ check "local_role_options_ignored_for_limited_access" {
     error_message = "enable_eks_read_access and enable_log_management don't apply to the role in the current account when role_access_level = \"limited\"; they still apply to member accounts."
   }
 }
-
-check "cur_export_setting_ignored_in_organization_mode" {
-  assert {
-    condition     = !local.is_organization || var.enable_cur_export == null
-    error_message = "enable_cur_export only applies to deployment_mode = \"account\". In organization mode the CUR export is always created in the management account (and not in a delegated administrator account)."
-  }
-}

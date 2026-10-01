@@ -110,8 +110,8 @@ resource "aws_cloudformation_stack_set" "spike" {
   template_body    = local.member_template_body
 
   parameters = {
-    ExternalId  = var.external_id
-    DirecteamId = var.directeam_id
+    ExternalId  = local.external_id
+    DirecteamId = local.directeam_id
   }
 
   auto_deployment {

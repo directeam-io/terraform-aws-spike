@@ -8,9 +8,8 @@ module "spike_production" {
     aws = aws.production
   }
 
-  external_id     = var.external_id
-  directeam_id    = var.directeam_id
-  deployment_mode = "account"
+  deployment_mode      = "account"
+  base_onboarding_mode = "create"
 }
 
 module "spike_staging" {
@@ -20,7 +19,6 @@ module "spike_staging" {
     aws = aws.staging
   }
 
-  external_id     = var.external_id
-  directeam_id    = var.directeam_id
-  deployment_mode = "account"
+  deployment_mode      = "account"
+  base_onboarding_mode = "create"
 }

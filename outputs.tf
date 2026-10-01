@@ -9,8 +9,18 @@ output "role_arn" {
 }
 
 output "base_onboarding_source" {
-  description = "Whether the base read-only onboarding remains CloudFormation-owned or is managed by Terraform."
+  description = "Whether base read-only onboarding remains CloudFormation-owned or is managed by Terraform."
   value       = local.existing_onboarding_detected ? "cloudformation" : "terraform"
+}
+
+output "onboarding_identity_source" {
+  description = "Whether onboarding identity came from CloudFormation stack parameters or compatibility input variables."
+  value       = local.identity_discovered ? "cloudformation" : "variables"
+}
+
+output "onboarding_identity_stack_name" {
+  description = "CloudFormation stack that supplied the Directeam customer and External IDs."
+  value       = local.identity_stack_name != "" ? local.identity_stack_name : null
 }
 
 output "base_onboarding_created" {

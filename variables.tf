@@ -1,29 +1,33 @@
 ################################################################################
-# Required - provided by Spike during onboarding
+# Spike onboarding identity
 ################################################################################
 
 variable "external_id" {
-  description = "External ID provided by Spike. Required in every sts:AssumeRole call Spike makes into your accounts."
+  description = "Optional compatibility fallback for the Spike External ID. By default, the module reads it from existing Directeam onboarding or the DirecteamTerraformBootstrap stack."
   type        = string
+  default     = null
+  nullable    = true
 
   validation {
-    condition     = length(var.external_id) >= 2 && length(var.external_id) <= 1224
-    error_message = "external_id must be between 2 and 1224 characters."
+    condition     = var.external_id == null ? true : length(var.external_id) >= 2 && length(var.external_id) <= 1224
+    error_message = "external_id must be null or between 2 and 1224 characters."
   }
 
   validation {
-    condition     = can(regex("^[\\w+=,.@:/-]+$", var.external_id))
+    condition     = var.external_id == null ? true : can(regex("^[\\w+=,.@:/-]+$", var.external_id))
     error_message = "external_id may only contain alphanumeric characters and any of: +=,.@:/-"
   }
 }
 
 variable "directeam_id" {
-  description = "Your Directeam customer ID, provided by Spike. Used to link this deployment to your Spike tenant."
+  description = "Optional compatibility fallback for the Directeam customer ID. By default, the module reads it from existing Directeam onboarding or the DirecteamTerraformBootstrap stack."
   type        = string
+  default     = null
+  nullable    = true
 
   validation {
-    condition     = length(var.directeam_id) >= 2 && length(var.directeam_id) <= 1224
-    error_message = "directeam_id must be between 2 and 1224 characters."
+    condition     = var.directeam_id == null ? true : length(var.directeam_id) >= 2 && length(var.directeam_id) <= 1224
+    error_message = "directeam_id must be null or between 2 and 1224 characters."
   }
 }
 
@@ -47,7 +51,7 @@ variable "base_onboarding_mode" {
   description = <<-EOT
     Controls ownership of the existing Directeam read-only onboarding resources.
     - "auto": detect the matching CloudFormation stack and preserve it when present.
-    - "create": always create and manage the base role, StackSet, CUR, and registration with Terraform.
+    - "create": always create and manage the base role, StackSet, CUR, and registration with Terraform. Identity is read from DirecteamTerraformBootstrap unless compatibility inputs are provided.
     - "existing": require the base onboarding to exist and manage only optional Terraform features such as Bedrock logs.
   EOT
   type        = string
@@ -181,7 +185,7 @@ variable "enable_cur_export" {
   description = <<-EOT
     Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from
     the management account, because it sees the costs of every account.
-    - deployment_mode = "organization": always created in the management account (this setting is ignored). Not created
+    - deployment_mode = "organization": on by default in the management account; set false to disable it. Not created
       when running as a delegated administrator; install the management account with deployment_mode = "account" and
       enable_cur_export = true instead.
     - deployment_mode = "account": off by default, since a linked account's export only contains its own costs. Set it
