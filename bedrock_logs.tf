@@ -293,6 +293,8 @@ resource "aws_iam_role_policy" "bedrock_logs_read" {
   name   = "BedrockInvocationLogsRead-${each.key}"
   role   = local.create_local_role ? aws_iam_role.spike[0].name : data.aws_iam_role.bedrock_logs_reader[0].name
   policy = data.aws_iam_policy_document.bedrock_logs_read[each.key].json
+
+  depends_on = [terraform_data.spike_stack_update]
 }
 
 ################################################################################
@@ -667,7 +669,7 @@ resource "aws_cloudformation_stack_set" "bedrock_logs" {
     }
   }
 
-  depends_on = [aws_cloudformation_stack_set_instance.spike]
+  depends_on = [aws_cloudformation_stack_set_instance.spike, terraform_data.spike_stack_update]
 }
 
 resource "aws_cloudformation_stack_instances" "bedrock_logs" {

@@ -33,6 +33,16 @@ output "existing_onboarding_stack_name" {
   value       = local.existing_onboarding_stack_name != "" ? local.existing_onboarding_stack_name : null
 }
 
+output "existing_onboarding_template_version" {
+  description = "Spike template version of the existing CloudFormation onboarding stack, as detected before this apply. Null when none is detected."
+  value       = local.existing_onboarding_template_version != "" ? local.existing_onboarding_template_version : null
+}
+
+output "spike_template_version" {
+  description = "Spike CloudFormation template version released with this module version. The existing onboarding stack is updated to it when update_spike_stack is true."
+  value       = local.spike_template_version
+}
+
 output "stack_set_name" {
   description = "Name of the StackSet that deploys the Spike role to member accounts. Null in account mode."
   value       = try(aws_cloudformation_stack_set.spike[0].name, null)

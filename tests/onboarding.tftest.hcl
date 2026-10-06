@@ -514,6 +514,148 @@ run "existing_organization_onboarding_is_preserved" {
   }
 }
 
+run "existing_stack_update_is_off_by_default" {
+  command = plan
+
+  variables {
+    deployment_mode      = "account"
+    base_onboarding_mode = "auto"
+  }
+
+  assert {
+    condition     = length(terraform_data.spike_stack_update) == 0
+    error_message = "The existing onboarding stack must only be updated when update_spike_stack is true."
+  }
+}
+
+run "existing_organization_stack_is_updated" {
+  command = plan
+
+  variables {
+    deployment_mode         = "organization"
+    base_onboarding_mode    = "auto"
+    update_spike_stack      = true
+    spike_template_base_url = "https://templates.example.com"
+  }
+
+  override_data {
+    target = data.external.existing_onboarding[0]
+    values = {
+      result = {
+        exists              = "true"
+        stack_name          = "DirecteamFinOpsStackSet"
+        stack_status        = "UPDATE_COMPLETE"
+        template_version    = "v1.0.51"
+        identity_found      = "true"
+        identity_stack_name = "DirecteamFinOpsStackSet"
+        external_id         = "spike-test-external-id"
+        directeam_id        = "directeam-test-id"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(terraform_data.spike_stack_update) == 1 && terraform_data.spike_stack_update[0].triggers_replace.stack_name == "DirecteamFinOpsStackSet"
+    error_message = "The detected StackSet onboarding stack must be updated in place."
+  }
+
+  assert {
+    condition     = terraform_data.spike_stack_update[0].triggers_replace.template_version == output.spike_template_version && output.existing_onboarding_template_version == "v1.0.51"
+    error_message = "The stack must be updated to the template version released with the module."
+  }
+
+  assert {
+    condition     = length(aws_cloudformation_stack_set.spike) == 0 && length(aws_iam_role.spike) == 0
+    error_message = "Updating the existing stack must not create Terraform-owned base onboarding."
+  }
+}
+
+run "stack_update_ignored_without_existing_onboarding" {
+  command = plan
+
+  variables {
+    deployment_mode    = "account"
+    update_spike_stack = true
+  }
+
+  assert {
+    condition     = length(terraform_data.spike_stack_update) == 0 && length(aws_iam_role.spike) == 1
+    error_message = "Without existing onboarding there is no stack to update."
+  }
+
+  expect_failures = [check.update_spike_stack_needs_existing_onboarding]
+}
+
+run "stack_update_requires_template_url" {
+  command = plan
+
+  variables {
+    deployment_mode      = "account"
+    base_onboarding_mode = "auto"
+    update_spike_stack   = true
+  }
+
+  expect_failures = [terraform_data.spike_stack_update]
+}
+
+run "stackset_instance_cannot_be_updated" {
+  command = plan
+
+  variables {
+    deployment_mode         = "account"
+    base_onboarding_mode    = "auto"
+    update_spike_stack      = true
+    spike_template_base_url = "https://templates.example.com"
+  }
+
+  override_data {
+    target = data.external.existing_onboarding[0]
+    values = {
+      result = {
+        exists              = "true"
+        stack_name          = "StackSet-DirecteamFinOpsReadOnlyAccess-1234"
+        stack_status        = "CREATE_COMPLETE"
+        template_version    = "v1.0.51"
+        identity_found      = "true"
+        identity_stack_name = "StackSet-DirecteamFinOpsReadOnlyAccess-1234"
+        external_id         = "spike-test-external-id"
+        directeam_id        = "directeam-test-id"
+      }
+    }
+  }
+
+  expect_failures = [terraform_data.spike_stack_update]
+}
+
+run "newer_stack_is_not_downgraded" {
+  command = plan
+
+  variables {
+    deployment_mode         = "account"
+    base_onboarding_mode    = "auto"
+    update_spike_stack      = true
+    spike_template_base_url = "https://templates.example.com"
+  }
+
+  override_data {
+    target = data.external.existing_onboarding[0]
+    values = {
+      result = {
+        exists              = "true"
+        stack_name          = "DirecteamFinOpsReadOnlyAccess"
+        stack_status        = "UPDATE_COMPLETE"
+        template_version    = "v9.0.0"
+        identity_found      = "true"
+        identity_stack_name = "DirecteamFinOpsReadOnlyAccess"
+        external_id         = "spike-test-external-id"
+        directeam_id        = "directeam-test-id"
+      }
+    }
+  }
+
+  expect_failures = [terraform_data.spike_stack_update]
+}
+
 run "invalid_deployment_mode" {
   command = plan
 

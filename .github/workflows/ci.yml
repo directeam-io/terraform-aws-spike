@@ -65,6 +65,7 @@ jobs:
           python tests/test_bedrock_invocation_logging.py -v
           python tests/test_discover_bedrock_usage.py -v
           python tests/test_discover_existing_onboarding.py -v
+          python tests/test_update_existing_onboarding.py -v
 
   lint:
     name: TFLint

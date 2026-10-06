@@ -97,6 +97,12 @@ locals {
   existing_onboarding_stack_name = local.existing_onboarding_detected ? data.external.existing_onboarding[0].result.stack_name : ""
   manage_base_onboarding         = !local.existing_onboarding_detected
 
+  # Spike CloudFormation templates released with this module version.
+  spike_template_version = "v1.0.67"
+
+  existing_onboarding_template_version = local.existing_onboarding_detected ? try(data.external.existing_onboarding[0].result.template_version, "") : ""
+  update_spike_stack                   = var.update_spike_stack && local.existing_onboarding_detected
+
   # A delegated administrator is itself a member account and receives the role through the StackSet.
   create_local_role       = local.manage_base_onboarding && !local.is_delegated_admin
   configure_local_bedrock = !local.is_delegated_admin

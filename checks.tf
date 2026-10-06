@@ -19,6 +19,13 @@ check "bedrock_invocation_logs_accounts_listed" {
   }
 }
 
+check "update_spike_stack_needs_existing_onboarding" {
+  assert {
+    condition     = !var.update_spike_stack || local.existing_onboarding_detected
+    error_message = "update_spike_stack is true but no existing Spike CloudFormation onboarding stack was found in us-east-1, so there is nothing to update. Base onboarding is managed by Terraform instead."
+  }
+}
+
 check "local_role_options_ignored_for_limited_access" {
   assert {
     condition     = var.role_access_level == "full" || !(var.enable_eks_read_access || var.enable_log_management)

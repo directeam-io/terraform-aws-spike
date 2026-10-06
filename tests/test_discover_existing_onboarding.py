@@ -47,6 +47,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                     "Parameters": [
                         {"ParameterKey": "ExternalId", "ParameterValue": "external-123"},
                         {"ParameterKey": "DirecteamId", "ParameterValue": "dtid-123"},
+                        {"ParameterKey": "TemplateVersion", "ParameterValue": "v1.0.51"},
                     ],
                 }]
             }),
@@ -66,6 +67,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                 "exists": "true",
                 "stack_name": "DirecteamFinOpsReadOnlyAccess",
                 "stack_status": "CREATE_COMPLETE",
+                "template_version": "v1.0.51",
                 "identity_found": "true",
                 "identity_stack_name": "DirecteamFinOpsReadOnlyAccess",
                 "external_id": "external-123",
@@ -120,6 +122,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                 "exists": "true",
                 "stack_name": stack_name,
                 "stack_status": "CREATE_COMPLETE",
+                "template_version": "",
                 "identity_found": "true",
                 "identity_stack_name": stack_name,
                 "external_id": "external-789",
@@ -170,6 +173,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                 "exists": "false",
                 "stack_name": "",
                 "stack_status": "",
+                "template_version": "",
                 "identity_found": "true",
                 "identity_stack_name": "DirecteamTerraformBootstrap",
                 "external_id": "external-456",

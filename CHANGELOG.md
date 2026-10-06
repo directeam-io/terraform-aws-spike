@@ -5,6 +5,14 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `update_spike_stack` keeps an existing `DirecteamFinOpsStackSet` or `DirecteamFinOpsReadOnlyAccess` CloudFormation
+  stack on the Spike template version released with the module (`v1.0.67`). The stack is updated in place through a
+  change set with its current parameters and stays CloudFormation-owned. Updates that would delete, replace, or
+  recreate core resources, drop parameters, or downgrade the stack are refused. Requires `spike_template_base_url`.
+- `existing_onboarding_template_version` and `spike_template_version` outputs.
+
 ## [1.2.1] - 2026-10-01
 
 ### Fixed

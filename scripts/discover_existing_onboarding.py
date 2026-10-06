@@ -109,7 +109,8 @@ def validate_stack(stack, stack_name, account_id):
     directeam_id = str(parameters.get("DirecteamId") or "")
     if not external_id or not directeam_id:
         raise DiscoveryError(f"CloudFormation stack {stack_name} must contain ExternalId and DirecteamId parameters.")
-    return status, external_id, directeam_id
+    template_version = str(parameters.get("TemplateVersion") or "")
+    return status, external_id, directeam_id, template_version
 
 
 def main():
@@ -139,17 +140,19 @@ def main():
             "exists": "false",
             "stack_name": "",
             "stack_status": "",
+            "template_version": "",
             "identity_found": "false",
             "identity_stack_name": "",
             "external_id": "",
             "directeam_id": "",
         }
     else:
-        status, external_id, directeam_id = validate_stack(identity_stack, identity_stack_name, account_id)
+        status, external_id, directeam_id, template_version = validate_stack(identity_stack, identity_stack_name, account_id)
         result = {
             "exists": "true" if base_stack is not None else "false",
             "stack_name": base_stack_name if base_stack is not None else "",
             "stack_status": status if base_stack is not None else "",
+            "template_version": template_version if base_stack is not None else "",
             "identity_found": "true",
             "identity_stack_name": identity_stack_name,
             "external_id": external_id,

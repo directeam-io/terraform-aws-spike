@@ -285,6 +285,35 @@ Regions must be enabled in the corresponding accounts. Nothing is uploaded to yo
 the Bedrock template is sent inline. Terraform validates CloudFormation's 51,200-byte inline-template limit and fails
 planning if the selected account/Region map exceeds it; narrow the map with `bedrock_invocation_logs_accounts`.
 
+### Keeping an existing CloudFormation install up to date
+
+When Spike was installed with CloudFormation, the module can keep that stack on the Spike template version released
+with the module version you use (`spike_template_version` output). Upgrading the module then upgrades the stack:
+
+```hcl
+module "spike" {
+  source  = "directeam-io/spike/aws"
+  version = "1.2.1"
+
+  deployment_mode         = "organization" # or "account"
+  update_spike_stack      = true
+  spike_template_base_url = "<template-url-from-directeam>"
+}
+```
+
+- On `terraform apply`, the detected `DirecteamFinOpsStackSet` or `DirecteamFinOpsReadOnlyAccess` stack is updated
+  through a CloudFormation change set that keeps every current parameter and only changes `TemplateVersion`. For
+  `DirecteamFinOpsStackSet`, this also updates the management account and, through its StackSet, every member account.
+- The stack stays CloudFormation-owned. Turning `update_spike_stack` off or running `terraform destroy` never deletes it.
+- The update is refused, and nothing changes, when it would delete, replace, or newly create a role, StackSet, nested
+  stack, bucket, or CUR export, when the new template drops or requires parameters the stack doesn't have, or when the
+  stack is already on a newer version. Contact Directeam to plan those upgrades.
+- Stack instances created by a StackSet (`StackSet-DirecteamFinOpsReadOnlyAccess-*`) are updated through their StackSet
+  and can't use this option.
+- Requires `python3` and the AWS CLI with credentials for the same account, and permission to create and execute
+  change sets and to update the stack's resources (IAM role and policies; for StackSet installs also the StackSet,
+  CUR bucket, and export).
+
 ## Updating and removing
 
 - **Update:** bump `ref` in `source` and run `terraform apply`. Member accounts are updated through the StackSet.
@@ -308,6 +337,7 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 |------|---------|
 | <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.0 |
 | <a name="provider_external"></a> [external](#provider\_external) | >= 2.3 |
+| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ### Resources
 
@@ -343,6 +373,7 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | [aws_s3_bucket_server_side_encryption_configuration.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
 | [aws_s3_bucket_versioning.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
 | [aws_s3_bucket_versioning.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
+| [terraform_data.spike_stack_update](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ### Inputs
 
@@ -369,10 +400,12 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | <a name="input_organizational_unit_ids"></a> [organizational\_unit\_ids](#input\_organizational\_unit\_ids) | IDs of the organization root (r-xxxx) or OUs (ou-xxxx-xxxxxxxx) to deploy the Spike role to. Leave empty to target the whole organization (the root is discovered automatically). | `list(string)` | `[]` | no |
 | <a name="input_retain_stacks_on_account_removal"></a> [retain\_stacks\_on\_account\_removal](#input\_retain\_stacks\_on\_account\_removal) | Keep the Spike role in accounts that leave the targeted OUs. Only applies when automatic deployment is on. | `bool` | `false` | no |
 | <a name="input_role_access_level"></a> [role\_access\_level](#input\_role\_access\_level) | Permission set for the role created in the current account.<br/>- "full": read-only access to resource metadata, billing, cost, and usage data (default).<br/>- "limited": billing, AWS Organizations, CloudFormation, and commitment (RI / Savings Plans) data only. Typically used<br/>  in management accounts that don't run workloads. The enable\_*\_access and enable\_log\_management options don't<br/>  apply to this level.<br/>Member accounts that receive the role through the StackSet always get the "full" permission set. | `string` | `"full"` | no |
+| <a name="input_spike_template_base_url"></a> [spike\_template\_base\_url](#input\_spike\_template\_base\_url) | Base URL of the Spike CloudFormation templates, provided by Directeam. Required when update\_spike\_stack is true. | `string` | `null` | no |
 | <a name="input_stackset_call_as"></a> [stackset\_call\_as](#input\_stackset\_call\_as) | Set to "DELEGATED\_ADMIN" when running from a CloudFormation StackSets delegated administrator account instead of the management account. In that case the role is only deployed through the StackSet, and no role or CUR export is created in the current account. | `string` | `"SELF"` | no |
 | <a name="input_stackset_failure_tolerance_percentage"></a> [stackset\_failure\_tolerance\_percentage](#input\_stackset\_failure\_tolerance\_percentage) | Percentage of accounts that can fail before the StackSet stops the operation. | `number` | `0` | no |
 | <a name="input_stackset_max_concurrent_percentage"></a> [stackset\_max\_concurrent\_percentage](#input\_stackset\_max\_concurrent\_percentage) | Maximum percentage of accounts the StackSet deploys to at the same time. | `number` | `100` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Additional tags for every resource this module creates (including the resources deployed to member accounts). | `map(string)` | `{}` | no |
+| <a name="input_update_spike_stack"></a> [update\_spike\_stack](#input\_update\_spike\_stack) | Keep the existing Spike CloudFormation onboarding stack (DirecteamFinOpsStackSet or DirecteamFinOpsReadOnlyAccess)<br/>on the Spike template version released with this module version. On apply, the detected stack is updated through<br/>a change set with its current parameters; the stack stays CloudFormation-owned and is never deleted by Terraform.<br/>Upgrading the module later updates the stack to the newer template version. Updates that would delete, replace, or<br/>recreate core resources are refused without changing anything. Only applies when existing onboarding is detected.<br/>Requires spike\_template\_base\_url. | `bool` | `false` | no |
 
 ### Outputs
 
@@ -388,11 +421,13 @@ planning if the selected account/Region map exceeds it; narrow the map with `bed
 | <a name="output_cur_bucket_name"></a> [cur\_bucket\_name](#output\_cur\_bucket\_name) | S3 bucket that receives the CUR 2.0 export. Null when no export is created in this account. |
 | <a name="output_cur_export_arn"></a> [cur\_export\_arn](#output\_cur\_export\_arn) | ARN of the CUR 2.0 data export. Null when no export is created in this account. |
 | <a name="output_existing_onboarding_stack_name"></a> [existing\_onboarding\_stack\_name](#output\_existing\_onboarding\_stack\_name) | Detected or declared existing CloudFormation onboarding stack name. |
+| <a name="output_existing_onboarding_template_version"></a> [existing\_onboarding\_template\_version](#output\_existing\_onboarding\_template\_version) | Spike template version of the existing CloudFormation onboarding stack, as detected before this apply. Null when none is detected. |
 | <a name="output_member_account_ids"></a> [member\_account\_ids](#output\_member\_account\_ids) | Member accounts that received the Spike role through the StackSet. |
 | <a name="output_onboarding_identity_source"></a> [onboarding\_identity\_source](#output\_onboarding\_identity\_source) | Whether onboarding identity came from CloudFormation stack parameters or compatibility input variables. |
 | <a name="output_onboarding_identity_stack_name"></a> [onboarding\_identity\_stack\_name](#output\_onboarding\_identity\_stack\_name) | CloudFormation stack that supplied the Directeam customer and External IDs. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | ARN of the Spike role in the current account. Null when running as a StackSets delegated administrator. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | Name of the Spike role, identical in every account it's deployed to. |
+| <a name="output_spike_template_version"></a> [spike\_template\_version](#output\_spike\_template\_version) | Spike CloudFormation template version released with this module version. The existing onboarding stack is updated to it when update\_spike\_stack is true. |
 | <a name="output_stack_set_id"></a> [stack\_set\_id](#output\_stack\_set\_id) | ID of the StackSet that deploys the Spike role to member accounts. Null in account mode. |
 | <a name="output_stack_set_name"></a> [stack\_set\_name](#output\_stack\_set\_name) | Name of the StackSet that deploys the Spike role to member accounts. Null in account mode. |
 | <a name="output_target_organizational_unit_ids"></a> [target\_organizational\_unit\_ids](#output\_target\_organizational\_unit\_ids) | Organization root or OU IDs targeted by the StackSet. |
