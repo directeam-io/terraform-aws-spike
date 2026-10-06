@@ -9,6 +9,9 @@ data "aws_iam_role" "bedrock_logs_reader" {
 }
 
 data "aws_iam_policy_document" "bedrock_logs_kms" {
+  #checkov:skip=CKV_AWS_109:KMS key policy: "*" is the key itself, and the account root statement is the AWS default that keeps the key manageable.
+  #checkov:skip=CKV_AWS_111:KMS key policy: "*" is the key itself, and the account root statement is the AWS default that keeps the key manageable.
+  #checkov:skip=CKV_AWS_356:KMS key policy: "*" is the key itself; key policies can't name a narrower resource.
   for_each = local.local_bedrock_logs_regions
 
   statement {
@@ -89,6 +92,9 @@ resource "aws_kms_alias" "bedrock_logs" {
 }
 
 resource "aws_s3_bucket" "bedrock_logs" {
+  #checkov:skip=CKV_AWS_18:Only Bedrock writes and Spike reads; access logging would add a log bucket per account and region.
+  #checkov:skip=CKV_AWS_144:The bucket only holds a short-lived rolling copy for Spike, so cross-region replication only adds cost.
+  #checkov:skip=CKV2_AWS_62:Spike reads the logs on a schedule; no event notifications are consumed.
   for_each = local.local_bedrock_logs_regions
 
   region        = each.key
