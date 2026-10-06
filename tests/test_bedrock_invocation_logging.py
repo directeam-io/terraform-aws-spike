@@ -46,7 +46,7 @@ def event(request_type):
             "DirecteamId": "dtid-test",
             "AccountId": "111111111111",
             "Region": "us-east-1",
-            "StackVersion": "v1.2.1",
+            "StackVersion": "v1.3.0",
         },
     }
 
@@ -82,7 +82,7 @@ class BedrockInvocationLoggingTest(unittest.TestCase):
                 "region": "us-east-1",
                 "bucketName": BUCKET,
                 "status": "enabled",
-                "stackVersion": "v1.2.1",
+                "stackVersion": "v1.3.0",
             },
         )
 

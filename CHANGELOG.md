@@ -5,6 +5,8 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-06
+
 ### Added
 
 - `update_spike_stack` keeps an existing `DirecteamFinOpsStackSet` or `DirecteamFinOpsReadOnlyAccess` CloudFormation
@@ -12,6 +14,11 @@ All notable changes to this module are documented here. The format follows
   change set with its current parameters and stays CloudFormation-owned. Updates that would delete, replace, or
   recreate core resources, drop parameters, or downgrade the stack are refused. Requires `spike_template_base_url`.
 - `existing_onboarding_template_version` and `spike_template_version` outputs.
+
+### Fixed
+
+- Checkov findings on the KMS key policies and the CUR and Bedrock log buckets that don't apply to them are skipped
+  with the reason, so CI passes again.
 
 ## [1.2.1] - 2026-10-01
 
