@@ -63,6 +63,30 @@ variable "base_onboarding_mode" {
   }
 }
 
+variable "update_spike_stack" {
+  description = <<-EOT
+    Keep the existing Spike CloudFormation onboarding stack (DirecteamFinOpsStackSet or DirecteamFinOpsReadOnlyAccess)
+    on the Spike template version released with this module version. On apply, the detected stack is updated through
+    a change set with its current parameters; the stack stays CloudFormation-owned and is never deleted by Terraform.
+    Upgrading the module later updates the stack to the newer template version. Updates that would delete, replace, or
+    recreate core resources are refused without changing anything. Only applies when existing onboarding is detected.
+    Requires spike_template_base_url.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "spike_template_base_url" {
+  description = "Base URL of the Spike CloudFormation templates, provided by Directeam. Required when update_spike_stack is true."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.spike_template_base_url == null || can(regex("^https://[^/\\s]+(/[^\\s]*)?$", var.spike_template_base_url))
+    error_message = "spike_template_base_url must be an https:// URL."
+  }
+}
+
 ################################################################################
 # Role permissions
 ################################################################################
