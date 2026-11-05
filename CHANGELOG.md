@@ -5,6 +5,23 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-05
+
+### Added
+
+- `litellm_logs_bucket_arns`: registers customer-owned LiteLLM proxy S3 logger buckets with Spike and grants the
+  Spike role read-only access to them. Buckets must be in the account where the module runs. Spike reads metadata
+  only (model, tokens, cost, request tags); prompt and response content is never read.
+- `enable_service_quotas_auto_management` with `service_quotas_auto_management_opt_in_type`,
+  `service_quotas_auto_management_regions`, and `service_quotas_auto_management_exclusion_list`: opts accounts into
+  AWS Service Quotas Automatic Management (80%/95% utilization notifications through AWS Health). Current account
+  configured directly per region; member accounts (organization mode) deployed through a service-managed StackSet
+  backed by a Lambda custom resource, since CloudFormation has no native resource for it.
+
+### Changed
+
+- Minimum AWS provider version raised to 6.40.0 for `aws_servicequotas_auto_management`.
+
 ## [1.3.0] - 2026-10-06
 
 ### Added

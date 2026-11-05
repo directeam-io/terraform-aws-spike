@@ -30,7 +30,7 @@ You can install it on a whole AWS Organization, on selected linked accounts, or 
 
    module "spike" {
      source  = "directeam-io/spike/aws"
-     version = "1.3.0"
+     version = "1.4.0"
 
      deployment_mode = "organization" # or "account"
    }
@@ -101,7 +101,7 @@ The AWS provider can be configured for any region. The module pins the resources
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "organization"
 }
@@ -115,7 +115,7 @@ The organization root is discovered automatically and accounts that join later a
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "organization"
 
@@ -131,7 +131,7 @@ so automatic deployment still never gives the role to an account unless you add 
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "organization"
 
@@ -150,7 +150,7 @@ and commitment (RI / Savings Plans) data there. Member accounts still get the fu
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode   = "organization"
   role_access_level = "limited"
@@ -162,7 +162,7 @@ module "spike" {
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "account"
 
@@ -183,7 +183,7 @@ using the management account for that:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode  = "organization"
   stackset_call_as = "DELEGATED_ADMIN"
@@ -196,7 +196,7 @@ organization's costs. So install the management account separately, from that ac
 ```hcl
 module "spike_management" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode   = "account"
   enable_cur_export = true
@@ -215,7 +215,7 @@ accounts and regions with Bedrock spend and nothing needs to be listed:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "organization"
 
@@ -257,7 +257,7 @@ every module instance; each account only uses its own entry:
 ```hcl
 module "spike_bedrock_logs" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode = "account"
 
@@ -285,6 +285,71 @@ Regions must be enabled in the corresponding accounts. Nothing is uploaded to yo
 the Bedrock template is sent inline. Terraform validates CloudFormation's 51,200-byte inline-template limit and fails
 planning if the selected account/Region map exceeds it; narrow the map with `bedrock_invocation_logs_accounts`.
 
+### LiteLLM logs
+
+Lets Spike collect usage from your LiteLLM proxy when it logs to S3 with LiteLLM's S3 logger (one JSON object per
+request). List the buckets your proxy writes to; they must be in the account where this module runs, since only that
+account's Spike role receives read access:
+
+```hcl
+module "spike" {
+  source  = "directeam-io/spike/aws"
+  version = "1.4.0"
+
+  deployment_mode = "account"
+
+  litellm_logs_bucket_arns = [
+    "arn:aws:s3:::my-litellm-logs",
+  ]
+}
+```
+
+| | Details |
+| --- | --- |
+| What is collected | Metadata only: model, provider, token counts, cost, request tags, and the metadata you attach per request. Prompt and response content is never read. |
+| Recommended | Enable LiteLLM's content redaction (`turn_off_message_logging`, or `redact_message_content`) so content never reaches the bucket at all. |
+| Access | The `DirecteamFinOpsReadOnlyAccess` role in the same account gets a `LiteLLMLogsRead` inline policy scoped to exactly the listed buckets. Nothing is created in your account. |
+| Removal | Set the list to empty (or remove it) and re-apply; the buckets stay yours, Spike's read access and registration are removed. |
+
+### Service Quotas Automatic Management
+
+Opts your accounts into AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies you at 80%
+and 95% through AWS Health, without you tracking limits manually:
+
+```hcl
+module "spike" {
+  source  = "directeam-io/spike/aws"
+  version = "1.4.0"
+
+  deployment_mode = "organization"
+
+  enable_service_quotas_auto_management = true
+  service_quotas_auto_management_regions = ["us-east-1", "eu-west-1"]
+}
+```
+
+Leave `service_quotas_auto_management_regions` unset for the home region only. Exclude specific quotas with
+`service_quotas_auto_management_exclusion_list`, e.g. `{ dynamodb = ["L-F98FE922"] }`.
+
+| | Details |
+| --- | --- |
+| Account you run Terraform in (and account mode) | Configured directly by Terraform (`aws_servicequotas_auto_management`, AWS provider >= 6.40.0), one opt-in per region. If auto management is already on in the account, import the resource instead: the README example below. |
+| Member accounts (organization mode) | Deployed through the `DirecteamServiceQuotasAutoManagement` StackSet. CloudFormation has no native resource for auto management, so each member stack carries a small Lambda that calls the Service Quotas APIs and reports status to Directeam. |
+| Already enabled by you | The member Lambda adopts the existing configuration (updates it to the module's settings) and never turns it off on removal; removal only stops auto management where this module started it. |
+| `NotifyAndAdjust` | AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved. Default is `NotifyOnly`. |
+| Notifications | Delivered through AWS Health. Slack/email delivery (AWS User Notifications) is not wired up in this version. |
+| Removal | Auto management is turned off in the regions this module enabled it in. |
+
+When auto management is already enabled in the current account, import the per-region resources so Terraform adopts
+them instead of failing:
+
+```hcl
+import {
+  to = module.spike.aws_servicequotas_auto_management.spike["us-east-1"]
+  identity = { region = "us-east-1" }
+}
+```
+
 ### Keeping an existing CloudFormation install up to date
 
 When Spike was installed with CloudFormation, the module can keep that stack on the Spike template version released
@@ -293,7 +358,7 @@ with the module version you use (`spike_template_version` output). Upgrading the
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.3.0"
+  version = "1.4.0"
 
   deployment_mode         = "organization" # or "account"
   update_spike_stack      = true
@@ -326,34 +391,39 @@ module "spike" {
 ### Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.40.0 |
 | <a name="requirement_external"></a> [external](#requirement\_external) | >= 2.3 |
 
 ### Providers
 
 | Name | Version |
-|------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.0 |
+| ---- | ------- |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.40.0 |
 | <a name="provider_external"></a> [external](#provider\_external) | >= 2.3 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 
 ### Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [aws_bcmdataexports_export.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bcmdataexports_export) | resource |
 | [aws_bedrock_model_invocation_logging_configuration.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrock_model_invocation_logging_configuration) | resource |
 | [aws_cloudformation_stack.bedrock_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
+| [aws_cloudformation_stack.litellm_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
+| [aws_cloudformation_stack.service_quotas_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack_instances.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
+| [aws_cloudformation_stack_instances.service_quotas](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
 | [aws_cloudformation_stack_set.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
+| [aws_cloudformation_stack_set.service_quotas](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set_instance.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set_instance) | resource |
 | [aws_iam_policy.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_role.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.bedrock_logs_read](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.litellm_logs_read](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_kms_alias.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
 | [aws_kms_alias.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
@@ -373,12 +443,13 @@ module "spike" {
 | [aws_s3_bucket_server_side_encryption_configuration.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
 | [aws_s3_bucket_versioning.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
 | [aws_s3_bucket_versioning.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_versioning) | resource |
+| [aws_servicequotas_auto_management.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/servicequotas_auto_management) | resource |
 | [terraform_data.spike_stack_update](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ### Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_auto_deployment"></a> [auto\_deployment](#input\_auto\_deployment) | Automatically deploy the Spike role to eligible accounts that join the targeted OUs later. When member\_account\_ids is set, only listed accounts are eligible. | `bool` | `true` | no |
 | <a name="input_base_onboarding_mode"></a> [base\_onboarding\_mode](#input\_base\_onboarding\_mode) | Controls ownership of the existing Directeam read-only onboarding resources.<br/>- "auto": detect the matching CloudFormation stack and preserve it when present.<br/>- "create": always create and manage the base role, StackSet, CUR, and registration with Terraform. Identity is read from DirecteamTerraformBootstrap unless compatibility inputs are provided.<br/>- "existing": require the base onboarding to exist and manage only optional Terraform features such as Bedrock logs. | `string` | `"auto"` | no |
 | <a name="input_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#input\_bedrock\_invocation\_logs\_accounts) | Optional override for the accounts and regions that get Bedrock invocation logging, as a map of account ID to<br/>region list. Leave null (default) to discover them automatically from AWS Cost Explorer at plan time: the module<br/>then looks for Bedrock spend in the last bedrock\_invocation\_logs\_lookback\_days days. Set it to pin the list, for<br/>example when Cost Explorer or the AWS CLI isn't available to Terraform, when running as a delegated administrator,<br/>or to add a region that hasn't been billed yet. An empty map deploys nothing.<br/>A dt-bedrock-invocation-logs-<account-id>-<region> bucket is created only for the resulting account/region pairs, readable only<br/>by the Spike role in that account. The buckets only hold a rolling copy for Spike to collect, and are deleted with<br/>their contents when the feature is turned off or an account/region stops using Bedrock. | `map(list(string))` | `null` | no |
@@ -392,7 +463,9 @@ module "spike" {
 | <a name="input_enable_cur_export"></a> [enable\_cur\_export](#input\_enable\_cur\_export) | Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from<br/>the management account, because it sees the costs of every account.<br/>- deployment\_mode = "organization": on by default in the management account; set false to disable it. Not created<br/>  when running as a delegated administrator; install the management account with deployment\_mode = "account" and<br/>  enable\_cur\_export = true instead.<br/>- deployment\_mode = "account": off by default, since a linked account's export only contains its own costs. Set it<br/>  to true for the management account or for a standalone account that isn't part of an AWS Organization. | `bool` | `null` | no |
 | <a name="input_enable_eks_read_access"></a> [enable\_eks\_read\_access](#input\_enable\_eks\_read\_access) | Allow Spike read-only access to the Kubernetes API of your EKS clusters (eks:AccessKubernetesApi). The cluster access entries themselves are still controlled by you. | `bool` | `false` | no |
 | <a name="input_enable_log_management"></a> [enable\_log\_management](#input\_enable\_log\_management) | Allow Spike to configure S3 server access logging and VPC flow logs, delivered to a dt-logs-<account-id> bucket. | `bool` | `false` | no |
+| <a name="input_enable_service_quotas_auto_management"></a> [enable\_service\_quotas\_auto\_management](#input\_enable\_service\_quotas\_auto\_management) | Opt in to AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies at 80% and 95%<br/>through AWS Health. One opt-in per region.<br/>- Current account: enabled directly in each service\_quotas\_auto\_management\_region.<br/>- Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet; the<br/>  management account itself is always configured directly by this module. | `bool` | `false` | no |
 | <a name="input_external_id"></a> [external\_id](#input\_external\_id) | Optional compatibility fallback for the Spike External ID. By default, the module reads it from existing Directeam onboarding or the DirecteamTerraformBootstrap stack. | `string` | `null` | no |
+| <a name="input_litellm_logs_bucket_arns"></a> [litellm\_logs\_bucket\_arns](#input\_litellm\_logs\_bucket\_arns) | S3 bucket ARNs where the customer's LiteLLM proxy writes its S3 logger output (one JSON object per request).<br/>Buckets must be in the account where this module runs; the Spike role in that account gets read-only access to<br/>them and the buckets are registered with Spike for collection. Spike reads metadata only (model, tokens, cost,<br/>request tags); prompt and response content is never read. Recommended: enable LiteLLM's content redaction so<br/>content never reaches the bucket. | `list(string)` | `[]` | no |
 | <a name="input_member_account_ids"></a> [member\_account\_ids](#input\_member\_account\_ids) | Deploy the Spike role ONLY to these member accounts (they must belong to organizational\_unit\_ids).<br/>Leave empty to deploy to every account in the targeted OUs. The StackSet uses an INTERSECTION filter so accounts<br/>outside this list never receive the role, including when automatic deployment is enabled. | `list(string)` | `[]` | no |
 | <a name="input_notification_timeout"></a> [notification\_timeout](#input\_notification\_timeout) | Seconds CloudFormation waits for Spike to acknowledge a registration notification. | `number` | `300` | no |
 | <a name="input_notification_topic_arn"></a> [notification\_topic\_arn](#input\_notification\_topic\_arn) | Spike onboarding SNS topic. Don't change unless instructed by Spike. | `string` | `"arn:aws:sns:us-east-1:250260913666:directeam-onboarding-topic-f7a69a4b"` | no |
@@ -400,6 +473,9 @@ module "spike" {
 | <a name="input_organizational_unit_ids"></a> [organizational\_unit\_ids](#input\_organizational\_unit\_ids) | IDs of the organization root (r-xxxx) or OUs (ou-xxxx-xxxxxxxx) to deploy the Spike role to. Leave empty to target the whole organization (the root is discovered automatically). | `list(string)` | `[]` | no |
 | <a name="input_retain_stacks_on_account_removal"></a> [retain\_stacks\_on\_account\_removal](#input\_retain\_stacks\_on\_account\_removal) | Keep the Spike role in accounts that leave the targeted OUs. Only applies when automatic deployment is on. | `bool` | `false` | no |
 | <a name="input_role_access_level"></a> [role\_access\_level](#input\_role\_access\_level) | Permission set for the role created in the current account.<br/>- "full": read-only access to resource metadata, billing, cost, and usage data (default).<br/>- "limited": billing, AWS Organizations, CloudFormation, and commitment (RI / Savings Plans) data only. Typically used<br/>  in management accounts that don't run workloads. The enable\_*\_access and enable\_log\_management options don't<br/>  apply to this level.<br/>Member accounts that receive the role through the StackSet always get the "full" permission set. | `string` | `"full"` | no |
+| <a name="input_service_quotas_auto_management_exclusion_list"></a> [service\_quotas\_auto\_management\_exclusion\_list](#input\_service\_quotas\_auto\_management\_exclusion\_list) | Map of AWS service code to quota codes excluded from Automatic Management, e.g. { dynamodb = ["L-F98FE922"] }. | `map(list(string))` | `{}` | no |
+| <a name="input_service_quotas_auto_management_opt_in_type"></a> [service\_quotas\_auto\_management\_opt\_in\_type](#input\_service\_quotas\_auto\_management\_opt\_in\_type) | NotifyOnly sends utilization notifications. NotifyAndAdjust additionally submits quota increase requests automatically; AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved. | `string` | `"NotifyOnly"` | no |
+| <a name="input_service_quotas_auto_management_regions"></a> [service\_quotas\_auto\_management\_regions](#input\_service\_quotas\_auto\_management\_regions) | Regions where Service Quotas Automatic Management is enabled. Leave null for the home region only. | `list(string)` | `null` | no |
 | <a name="input_spike_template_base_url"></a> [spike\_template\_base\_url](#input\_spike\_template\_base\_url) | Base URL of the Spike CloudFormation templates, provided by Directeam. Required when update\_spike\_stack is true. | `string` | `null` | no |
 | <a name="input_stackset_call_as"></a> [stackset\_call\_as](#input\_stackset\_call\_as) | Set to "DELEGATED\_ADMIN" when running from a CloudFormation StackSets delegated administrator account instead of the management account. In that case the role is only deployed through the StackSet, and no role or CUR export is created in the current account. | `string` | `"SELF"` | no |
 | <a name="input_stackset_failure_tolerance_percentage"></a> [stackset\_failure\_tolerance\_percentage](#input\_stackset\_failure\_tolerance\_percentage) | Percentage of accounts that can fail before the StackSet stops the operation. | `number` | `0` | no |
@@ -410,7 +486,7 @@ module "spike" {
 ### Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_base_onboarding_created"></a> [base\_onboarding\_created](#output\_base\_onboarding\_created) | Whether this module creates the base read-only onboarding resources. |
 | <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether base read-only onboarding remains CloudFormation-owned or is managed by Terraform. |
 | <a name="output_bedrock_invocation_log_buckets"></a> [bedrock\_invocation\_log\_buckets](#output\_bedrock\_invocation\_log\_buckets) | Bedrock invocation log bucket in the current account, by region. |

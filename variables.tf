@@ -202,6 +202,71 @@ variable "bedrock_invocation_logs_retention_days" {
 }
 
 ################################################################################
+# LiteLLM logs
+################################################################################
+
+variable "litellm_logs_bucket_arns" {
+  description = <<-EOT
+    S3 bucket ARNs where the customer's LiteLLM proxy writes its S3 logger output (one JSON object per request).
+    Buckets must be in the account where this module runs; the Spike role in that account gets read-only access to
+    them and the buckets are registered with Spike for collection. Spike reads metadata only (model, tokens, cost,
+    request tags); prompt and response content is never read. Recommended: enable LiteLLM's content redaction so
+    content never reaches the bucket.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.litellm_logs_bucket_arns : can(regex("^arn:aws:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", arn))])
+    error_message = "Each litellm_logs_bucket_arns entry must be a full S3 bucket ARN, e.g. arn:aws:s3:::my-litellm-logs."
+  }
+}
+
+################################################################################
+# Service Quotas Automatic Management
+################################################################################
+
+variable "enable_service_quotas_auto_management" {
+  description = <<-EOT
+    Opt in to AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies at 80% and 95%
+    through AWS Health. One opt-in per region.
+    - Current account: enabled directly in each service_quotas_auto_management_region.
+    - Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet; the
+      management account itself is always configured directly by this module.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "service_quotas_auto_management_opt_in_type" {
+  description = "NotifyOnly sends utilization notifications. NotifyAndAdjust additionally submits quota increase requests automatically; AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved."
+  type        = string
+  default     = "NotifyOnly"
+
+  validation {
+    condition     = contains(["NotifyOnly", "NotifyAndAdjust"], var.service_quotas_auto_management_opt_in_type)
+    error_message = "service_quotas_auto_management_opt_in_type must be \"NotifyOnly\" or \"NotifyAndAdjust\"."
+  }
+}
+
+variable "service_quotas_auto_management_regions" {
+  description = "Regions where Service Quotas Automatic Management is enabled. Leave null for the home region only."
+  type        = list(string)
+  default     = null
+
+  validation {
+    condition     = var.service_quotas_auto_management_regions == null || alltrue([for region in coalesce(var.service_quotas_auto_management_regions, []) : can(regex("^[a-z]{2}(-[a-z]+)+-\\d$", region))])
+    error_message = "Each service_quotas_auto_management_regions entry must be an AWS region name, e.g. us-east-1."
+  }
+}
+
+variable "service_quotas_auto_management_exclusion_list" {
+  description = "Map of AWS service code to quota codes excluded from Automatic Management, e.g. { dynamodb = [\"L-F98FE922\"] }."
+  type        = map(list(string))
+  default     = {}
+}
+
+################################################################################
 # Cost and Usage Report (CUR 2.0) export
 ################################################################################
 

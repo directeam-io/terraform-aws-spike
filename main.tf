@@ -65,13 +65,16 @@ data "aws_organizations_organization" "current" {
 }
 
 locals {
-  module_version = "1.3.0"
+  module_version = "1.4.0"
 
-  role_name                       = "DirecteamFinOpsReadOnlyAccess"
-  stack_set_name                  = "DirecteamFinOpsReadOnlyAccess"
-  bedrock_stack_set_name          = "DirecteamBedrockInvocationLogs"
-  registration_stack_name         = "DirecteamFinOpsRegistration"
-  bedrock_registration_stack_name = "DirecteamBedrockInvocationLogsRegistration"
+  role_name                              = "DirecteamFinOpsReadOnlyAccess"
+  stack_set_name                         = "DirecteamFinOpsReadOnlyAccess"
+  bedrock_stack_set_name                 = "DirecteamBedrockInvocationLogs"
+  service_quotas_stack_set_name          = "DirecteamServiceQuotasAutoManagement"
+  registration_stack_name                = "DirecteamFinOpsRegistration"
+  bedrock_registration_stack_name        = "DirecteamBedrockInvocationLogsRegistration"
+  litellm_registration_stack_name        = "DirecteamFinOpsLiteLLMLogsRegistration"
+  service_quotas_registration_stack_name = "DirecteamServiceQuotasAutoManagementRegistration"
 
   # Spike's SNS-backed custom resources and CUR 2.0 data exports are only available in us-east-1.
   home_region = "us-east-1"
