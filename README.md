@@ -391,7 +391,7 @@ module "spike" {
 ### Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.40.0 |
 | <a name="requirement_external"></a> [external](#requirement\_external) | >= 2.3 |
@@ -399,7 +399,7 @@ module "spike" {
 ### Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.40.0 |
 | <a name="provider_external"></a> [external](#provider\_external) | >= 2.3 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
@@ -407,7 +407,7 @@ module "spike" {
 ### Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [aws_bcmdataexports_export.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bcmdataexports_export) | resource |
 | [aws_bedrock_model_invocation_logging_configuration.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrock_model_invocation_logging_configuration) | resource |
 | [aws_cloudformation_stack.bedrock_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
@@ -449,7 +449,7 @@ module "spike" {
 ### Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_auto_deployment"></a> [auto\_deployment](#input\_auto\_deployment) | Automatically deploy the Spike role to eligible accounts that join the targeted OUs later. When member\_account\_ids is set, only listed accounts are eligible. | `bool` | `true` | no |
 | <a name="input_base_onboarding_mode"></a> [base\_onboarding\_mode](#input\_base\_onboarding\_mode) | Controls ownership of the existing Directeam read-only onboarding resources.<br/>- "auto": detect the matching CloudFormation stack and preserve it when present.<br/>- "create": always create and manage the base role, StackSet, CUR, and registration with Terraform. Identity is read from DirecteamTerraformBootstrap unless compatibility inputs are provided.<br/>- "existing": require the base onboarding to exist and manage only optional Terraform features such as Bedrock logs. | `string` | `"auto"` | no |
 | <a name="input_bedrock_invocation_logs_accounts"></a> [bedrock\_invocation\_logs\_accounts](#input\_bedrock\_invocation\_logs\_accounts) | Optional override for the accounts and regions that get Bedrock invocation logging, as a map of account ID to<br/>region list. Leave null (default) to discover them automatically from AWS Cost Explorer at plan time: the module<br/>then looks for Bedrock spend in the last bedrock\_invocation\_logs\_lookback\_days days. Set it to pin the list, for<br/>example when Cost Explorer or the AWS CLI isn't available to Terraform, when running as a delegated administrator,<br/>or to add a region that hasn't been billed yet. An empty map deploys nothing.<br/>A dt-bedrock-invocation-logs-<account-id>-<region> bucket is created only for the resulting account/region pairs, readable only<br/>by the Spike role in that account. The buckets only hold a rolling copy for Spike to collect, and are deleted with<br/>their contents when the feature is turned off or an account/region stops using Bedrock. | `map(list(string))` | `null` | no |
@@ -486,7 +486,7 @@ module "spike" {
 ### Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_base_onboarding_created"></a> [base\_onboarding\_created](#output\_base\_onboarding\_created) | Whether this module creates the base read-only onboarding resources. |
 | <a name="output_base_onboarding_source"></a> [base\_onboarding\_source](#output\_base\_onboarding\_source) | Whether base read-only onboarding remains CloudFormation-owned or is managed by Terraform. |
 | <a name="output_bedrock_invocation_log_buckets"></a> [bedrock\_invocation\_log\_buckets](#output\_bedrock\_invocation\_log\_buckets) | Bedrock invocation log bucket in the current account, by region. |

@@ -55,7 +55,7 @@ run "buckets_listed" {
   command = plan
 
   variables {
-    deployment_mode           = "account"
+    deployment_mode = "account"
     litellm_logs_bucket_arns = [
       "arn:aws:s3:::acme-litellm-logs",
       "arn:aws:s3:::acme-litellm-logs-eu",

@@ -55,10 +55,10 @@ run "single_account" {
   command = plan
 
   variables {
-    deployment_mode                              = "account"
-    enable_service_quotas_auto_management        = true
-    service_quotas_auto_management_regions       = ["us-east-1", "eu-west-2"]
-    service_quotas_auto_management_opt_in_type   = "NotifyAndAdjust"
+    deployment_mode                               = "account"
+    enable_service_quotas_auto_management         = true
+    service_quotas_auto_management_regions        = ["us-east-1", "eu-west-2"]
+    service_quotas_auto_management_opt_in_type    = "NotifyAndAdjust"
     service_quotas_auto_management_exclusion_list = { dynamodb = ["L-F98FE922"] }
   }
 
@@ -118,9 +118,9 @@ run "existing_onboarding_organization" {
 
   variables {
     deployment_mode                        = "organization"
-    base_onboarding_mode                  = "existing"
-    member_account_ids                    = ["222222222222"]
-    enable_service_quotas_auto_management = true
+    base_onboarding_mode                   = "existing"
+    member_account_ids                     = ["222222222222"]
+    enable_service_quotas_auto_management  = true
     service_quotas_auto_management_regions = ["us-east-1"]
   }
 
