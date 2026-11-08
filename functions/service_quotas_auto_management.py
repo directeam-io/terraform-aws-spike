@@ -12,22 +12,35 @@ def current_config():
 
 
 def is_enabled(config):
-    # OptInStatus is the enablement flag of the configuration AWS reports.
     return str(config.get("OptInStatus", "")).lower() == "enabled"
 
 
 def apply(opt_in_type, exclusion_list):
-    kwargs = {
-        "OptInLevel": "ACCOUNT",
-        "OptInType": opt_in_type,
-    }
-    # The API rejects an empty exclusion list; omit the argument entirely.
+    kwargs = {"OptInType": opt_in_type}
+    # An empty list is rejected.
     if exclusion_list:
         kwargs["ExclusionList"] = exclusion_list
     if is_enabled(current_config()):
+        # Update rejects OptInLevel.
         servicequotas.update_auto_management(**kwargs)
     else:
-        servicequotas.start_auto_management(**kwargs)
+        servicequotas.start_auto_management(OptInLevel="ACCOUNT", **kwargs)
+
+
+def unchanged(config, opt_in_type, exclusion_list):
+    # The API returns {"QuotaCode": ...} objects.
+    def codes(exclusions):
+        return {
+            key: {item["QuotaCode"] if isinstance(item, dict) else item for item in items}
+            for key, items in (exclusions or {}).items()
+        }
+
+    return (
+        is_enabled(config)
+        and config.get("OptInType") == opt_in_type
+        and not config.get("NotificationArn")
+        and codes(config.get("ExclusionList")) == codes(exclusion_list)
+    )
 
 
 def publish_event(event, props, status, error=""):
@@ -43,50 +56,50 @@ def publish_event(event, props, status, error=""):
     }
     if error:
         message["error"] = error[:180]
-    sns.publish(
-        TopicArn=props["NotificationTopicArn"],
-        Message=json.dumps(message),
-    )
+    sns.publish(TopicArn=props["NotificationTopicArn"], Message=json.dumps(message))
 
 
 def handler(event, context):
     props = event["ResourceProperties"]
     region = props["Region"]
+    request = event["RequestType"]
     physical_id = event.get("PhysicalResourceId") or f"service-quotas-auto-management-{region}"
     try:
         exclusion_list = json.loads(props.get("ExclusionList") or "{}")
-        if event["RequestType"] == "Delete":
+        if request == "Delete":
+            status = "removed"
             if physical_id.endswith("started"):
-                servicequotas.stop_auto_management()
+                # Stop only if still the module's.
+                if unchanged(current_config(), props["OptInType"], exclusion_list):
+                    servicequotas.stop_auto_management()
+                else:
+                    status = "skipped-customer-modified"
+            if physical_id.endswith(("started", "adopted")):
                 publish_event(event, props, "removed")
-            elif physical_id.endswith("adopted"):
-                # An adopted (pre-existing) configuration is left enabled on removal.
-                publish_event(event, props, "removed")
-            else:
-                # No suffix: the create never succeeded (failed create rolled
-                # back). Publish nothing so the error status recorded by the
-                # failed create stays visible.
+                print(f"Delete {region}: {status}")
+            else:  # failed create
                 print(f"Delete {region}: skipped, create never succeeded")
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": "removed"}, physical_id)
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": status}, physical_id)
             return
-        else:
-            started_here = event["RequestType"] == "Create" and not is_enabled(current_config())
+        # Never change an existing configuration ("adopted").
+        skip = (request == "Create" and is_enabled(current_config())) or (
+            request == "Update" and physical_id.endswith("adopted")
+        )
+        status = "skipped-existing-configuration"
+        if not skip:
             apply(props["OptInType"], exclusion_list)
             status = "enabled"
-            if event["RequestType"] == "Create":
-                # The physical ID records whether this stack started auto
-                # management or adopted an existing configuration, so Delete
-                # only stops what this stack started.
-                physical_id = f"service-quotas-auto-management-{region}-{'started' if started_here else 'adopted'}"
-        publish_event(event, props, status)
-        print(f"{event['RequestType']} {region}: {status}")
+        if request == "Create":
+            physical_id = f"service-quotas-auto-management-{region}-{'adopted' if skip else 'started'}"
+        publish_event(event, props, "enabled")
+        print(f"{request} {region}: {status}")
         cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Status": status}, physical_id)
     except Exception as error:
-        print(f"{event['RequestType']} {region} failed: {error!r}")
+        print(f"{request} {region} failed: {error!r}")
         try:
             publish_event(event, props, "error", str(error))
         except Exception as publish_error:
-            print(f"Feature event publication failed: {publish_error!r}")
-        # A failed delete would leave the stack stuck, so deletes always report success.
-        result = cfnresponse.SUCCESS if event["RequestType"] == "Delete" else cfnresponse.FAILED
+            print(f"Publish failed: {publish_error!r}")
+        # Deletes always succeed, or the stack gets stuck.
+        result = cfnresponse.SUCCESS if request == "Delete" else cfnresponse.FAILED
         cfnresponse.send(event, context, result, {"Status": "error"}, physical_id, reason=str(error)[:200])
