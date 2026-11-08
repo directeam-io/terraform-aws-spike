@@ -230,9 +230,13 @@ variable "enable_service_quotas_auto_management" {
   description = <<-EOT
     Opt in to AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies at 80% and 95%
     through AWS Health. One opt-in per region.
-    - Current account: enabled directly in each service_quotas_auto_management_region.
-    - Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet; the
-      management account itself is always configured directly by this module.
+    - Current account: enabled directly in every region enabled in the account. A region where it is already on
+      fails to apply with "Account already has an opt-in"; the other regions are still enabled. Import that region
+      into Terraform, or leave it out of service_quotas_auto_management_regions.
+    - Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet in every
+      region that needs no opt-in; the management account itself is always configured directly by this module. A
+      region where it is already on is left untouched and is not turned off on removal.
+    - A list in service_quotas_auto_management_regions overrides the regions for both.
   EOT
   type        = bool
   default     = false
@@ -250,13 +254,23 @@ variable "service_quotas_auto_management_opt_in_type" {
 }
 
 variable "service_quotas_auto_management_regions" {
-  description = "Regions where Service Quotas Automatic Management is enabled. Leave null for the home region only."
+  description = "Regions where Service Quotas Automatic Management is enabled. Leave null for every region enabled in the current account, and every region that does not require opt-in in member accounts. Set a list to use the same regions for both."
   type        = list(string)
   default     = null
 
   validation {
     condition     = var.service_quotas_auto_management_regions == null || alltrue([for region in coalesce(var.service_quotas_auto_management_regions, []) : can(regex("^[a-z]{2}(-[a-z]+)+-\\d$", region))])
     error_message = "Each service_quotas_auto_management_regions entry must be an AWS region name, e.g. us-east-1."
+  }
+
+  validation {
+    condition     = var.service_quotas_auto_management_regions == null || length(coalesce(var.service_quotas_auto_management_regions, [])) > 0
+    error_message = "service_quotas_auto_management_regions must not be empty; set it to null to use the default regions."
+  }
+
+  validation {
+    condition     = var.service_quotas_auto_management_regions == null || length(distinct(coalesce(var.service_quotas_auto_management_regions, []))) == length(coalesce(var.service_quotas_auto_management_regions, []))
+    error_message = "service_quotas_auto_management_regions must not contain duplicates."
   }
 }
 

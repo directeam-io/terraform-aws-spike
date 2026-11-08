@@ -12,13 +12,19 @@
 # template with a Lambda-backed custom resource that calls the
 # servicequotas Start/Update/Stop AutoManagement APIs. StackSets never deploy
 # to the management account, which is handled directly by this module.
+#
+# Regions: by default every region enabled in the current account, and every
+# region that needs no opt-in in member accounts (a StackSet cannot see which
+# opt-in regions each member enabled). A list in
+# service_quotas_auto_management_regions overrides both. A member region that
+# is already on is left untouched; a current-account region that is already on
+# must be imported (the native resource cannot start it twice).
 ################################################################################
 
 locals {
   service_quotas_function_name   = "DirecteamFinOpsServiceQuotasAutoManagement"
   service_quotas_function_source = file("${path.module}/functions/service_quotas_auto_management.py")
   service_quotas_template_tags   = [for key in sort(keys(local.tags)) : { Key = key, Value = local.tags[key] }]
-  service_quotas_regions         = coalesce(var.service_quotas_auto_management_regions, [local.home_region])
 
   configure_local_service_quotas = var.enable_service_quotas_auto_management && !local.is_delegated_admin
   # Independent of deploy_stack_set (existing CloudFormation onboarding):
@@ -26,10 +32,34 @@ locals {
   # even when the base onboarding is CloudFormation-owned. The management
   # account itself is always configured directly by this module.
   deploy_service_quotas_stackset = var.enable_service_quotas_auto_management && local.is_organization
+
+  local_service_quotas_regions = local.configure_local_service_quotas ? sort(
+    var.service_quotas_auto_management_regions != null ? var.service_quotas_auto_management_regions : tolist(data.aws_regions.service_quotas_current[0].names)
+  ) : []
+  member_service_quotas_regions = local.deploy_service_quotas_stackset ? sort(
+    var.service_quotas_auto_management_regions != null ? var.service_quotas_auto_management_regions : tolist(data.aws_regions.service_quotas_members[0].names)
+  ) : []
+}
+
+# Regions enabled in the current account.
+data "aws_regions" "service_quotas_current" {
+  count = local.configure_local_service_quotas && var.service_quotas_auto_management_regions == null ? 1 : 0
+}
+
+# Regions that member accounts have without opting in.
+data "aws_regions" "service_quotas_members" {
+  count = local.deploy_service_quotas_stackset && var.service_quotas_auto_management_regions == null ? 1 : 0
+
+  all_regions = true
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 resource "aws_servicequotas_auto_management" "spike" {
-  for_each = local.configure_local_service_quotas ? toset(local.service_quotas_regions) : toset([])
+  for_each = local.configure_local_service_quotas ? toset(local.local_service_quotas_regions) : toset([])
 
   region         = each.key
   opt_in_level   = "ACCOUNT"
@@ -209,7 +239,7 @@ resource "aws_cloudformation_stack_set" "service_quotas" {
 }
 
 resource "aws_cloudformation_stack_instances" "service_quotas" {
-  for_each = local.deploy_service_quotas_stackset ? toset(local.service_quotas_regions) : toset([])
+  for_each = local.deploy_service_quotas_stackset ? toset(local.member_service_quotas_regions) : toset([])
 
   stack_set_name = aws_cloudformation_stack_set.service_quotas[0].name
   regions        = [each.key]

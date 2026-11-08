@@ -33,7 +33,7 @@ locals {
   } : {}
 
   service_quotas_registration_resources = local.configure_local_service_quotas ? {
-    for region in local.service_quotas_regions : "ServiceQuotas${replace(title(region), "-", "")}" => {
+    for region in local.local_service_quotas_regions : "ServiceQuotas${replace(title(region), "-", "")}" => {
       Type = "AWS::CloudFormation::CustomResource"
       Properties = {
         ServiceToken   = var.notification_topic_arn

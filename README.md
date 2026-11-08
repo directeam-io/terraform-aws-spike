@@ -328,27 +328,78 @@ module "spike" {
 }
 ```
 
-Leave `service_quotas_auto_management_regions` unset for the home region only. Exclude specific quotas with
-`service_quotas_auto_management_exclusion_list`, e.g. `{ dynamodb = ["L-F98FE922"] }`.
+Leave `service_quotas_auto_management_regions` unset to use every region enabled in the current account, and every
+region that needs no opt-in in member accounts. Set a list to use the same regions for both. Exclude specific quotas
+with `service_quotas_auto_management_exclusion_list`, e.g. `{ dynamodb = ["L-F98FE922"] }`. AWS can take up to 24
+hours to start monitoring a region.
 
 | | Details |
 | --- | --- |
-| Account you run Terraform in (and account mode) | Configured directly by Terraform (`aws_servicequotas_auto_management`, AWS provider >= 6.40.0), one opt-in per region. If auto management is already on in the account, import the resource instead: the README example below. |
+| Account you run Terraform in (and account mode) | Configured directly by Terraform (`aws_servicequotas_auto_management`, AWS provider >= 6.40.0), one opt-in per region. If auto management is already on in a region, import it: see [Already enabled in the current account](#already-enabled-in-the-current-account). |
 | Member accounts (organization mode) | Deployed through the `DirecteamServiceQuotasAutoManagement` StackSet. CloudFormation has no native resource for auto management, so each member stack carries a small Lambda that calls the Service Quotas APIs and reports status to Directeam. |
-| Already enabled by you | The member Lambda adopts the existing configuration (updates it to the module's settings) and never turns it off on removal; removal only stops auto management where this module started it. |
+| Already enabled by you (member accounts) | A region that is already on is left exactly as it is: the module changes nothing, on creation or on later updates, and never turns it off on removal. |
+| Removal | In member accounts, only regions this module turned on are turned off, and only while the setting is still the one the module applied. If you changed the mode or exclusions since, the region is left on. In the current account Terraform stops auto management in every region it manages. |
 | `NotifyAndAdjust` | AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved. Default is `NotifyOnly`. |
 | Notifications | Delivered through AWS Health. Slack/email delivery (AWS User Notifications) is not wired up in this version. |
-| Removal | Auto management is turned off in the regions this module enabled it in. |
 
-When auto management is already enabled in the current account, import the per-region resources so Terraform adopts
-them instead of failing:
+#### Already enabled in the current account
 
-```hcl
-import {
-  to = module.spike.aws_servicequotas_auto_management.spike["us-east-1"]
-  identity = { region = "us-east-1" }
-}
+AWS does not allow starting auto management twice, so if it is already on in a region of the account you run
+Terraform in, `terraform apply` fails for that region only. The other regions are still enabled and saved in state,
+and the apply exits with an error:
+
+```text
+Error: creating
+
+  with module.spike.aws_servicequotas_auto_management.spike["us-west-2"],
+  on .terraform/modules/spike/service_quotas.tf line 61, in resource "aws_servicequotas_auto_management" "spike":
+  61: resource "aws_servicequotas_auto_management" "spike" {
+
+ID: resource_name
+Cause: operation error Service Quotas: StartAutoManagement, ,
+IllegalArgumentException: Account already has an opt-in: 123456789012"
 ```
+
+The error says `Account already has an opt-in: <account-id>`; its `with` line names the resource, and the region is
+the key in brackets, e.g. `aws_servicequotas_auto_management.spike["eu-west-1"]`. Fix it in one of these ways:
+
+- Import the region so Terraform manages it, with an `import` block in your root module (works on every supported
+  Terraform version; the import ID is the region name; the module can't import for you because `import` blocks only
+  work in the root module). Add the block and run `terraform apply`:
+
+  ```hcl
+  import {
+    to = module.spike.aws_servicequotas_auto_management.spike["eu-west-1"]
+    id = "eu-west-1"
+  }
+  ```
+
+  For several regions on Terraform 1.7 or later, use `for_each`:
+
+  ```hcl
+  import {
+    for_each = toset(["eu-west-1", "us-west-2"])
+    to       = module.spike.aws_servicequotas_auto_management.spike[each.key]
+    id       = each.key
+  }
+  ```
+
+- Or leave the region out of `service_quotas_auto_management_regions`, or keep `enable_service_quotas_auto_management`
+  off.
+
+After the import, Terraform owns that region's setting: the next apply sets it to the module's mode and exclusions,
+and `terraform destroy` turns it off.
+
+#### Upgrading to 1.5.0
+
+- **Default regions changed.** With `service_quotas_auto_management_regions` unset, the feature used to cover the
+  home region only. It now covers every region enabled in the current account, and every region that needs no opt-in
+  in member accounts. The next apply adds those regions; any that are already on in the current account fail until
+  imported (see above). Set the list to keep the old behavior, e.g. `["us-east-1"]`.
+- **Member regions that were already on are skipped.** With 1.4.0, the member stack for a region that already had
+  auto management failed (the Lambda sent a parameter the API rejects) and changed nothing. From 1.5.0 such a region is
+  left untouched and the stack succeeds. Updating a member stack (for example when you upgrade the module) also failed
+  under 1.4.0 when auto management was on; this is fixed. Stacks that failed under 1.4.0 are created on the next apply.
 
 ### Keeping an existing CloudFormation install up to date
 
@@ -463,7 +514,7 @@ module "spike" {
 | <a name="input_enable_cur_export"></a> [enable\_cur\_export](#input\_enable\_cur\_export) | Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from<br/>the management account, because it sees the costs of every account.<br/>- deployment\_mode = "organization": on by default in the management account; set false to disable it. Not created<br/>  when running as a delegated administrator; install the management account with deployment\_mode = "account" and<br/>  enable\_cur\_export = true instead.<br/>- deployment\_mode = "account": off by default, since a linked account's export only contains its own costs. Set it<br/>  to true for the management account or for a standalone account that isn't part of an AWS Organization. | `bool` | `null` | no |
 | <a name="input_enable_eks_read_access"></a> [enable\_eks\_read\_access](#input\_enable\_eks\_read\_access) | Allow Spike read-only access to the Kubernetes API of your EKS clusters (eks:AccessKubernetesApi). The cluster access entries themselves are still controlled by you. | `bool` | `false` | no |
 | <a name="input_enable_log_management"></a> [enable\_log\_management](#input\_enable\_log\_management) | Allow Spike to configure S3 server access logging and VPC flow logs, delivered to a dt-logs-<account-id> bucket. | `bool` | `false` | no |
-| <a name="input_enable_service_quotas_auto_management"></a> [enable\_service\_quotas\_auto\_management](#input\_enable\_service\_quotas\_auto\_management) | Opt in to AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies at 80% and 95%<br/>through AWS Health. One opt-in per region.<br/>- Current account: enabled directly in each service\_quotas\_auto\_management\_region.<br/>- Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet; the<br/>  management account itself is always configured directly by this module. | `bool` | `false` | no |
+| <a name="input_enable_service_quotas_auto_management"></a> [enable\_service\_quotas\_auto\_management](#input\_enable\_service\_quotas\_auto\_management) | Opt in to AWS Service Quotas Automatic Management: AWS monitors quota utilization and notifies at 80% and 95%<br/>through AWS Health. One opt-in per region.<br/>- Current account: enabled directly in every region enabled in the account. A region where it is already on<br/>  fails to apply with "Account already has an opt-in"; the other regions are still enabled. Import that region<br/>  into Terraform, or leave it out of service\_quotas\_auto\_management\_regions.<br/>- Member accounts (organization mode): deployed to linked accounts through a service-managed StackSet in every<br/>  region that needs no opt-in; the management account itself is always configured directly by this module. A<br/>  region where it is already on is left untouched and is not turned off on removal.<br/>- A list in service\_quotas\_auto\_management\_regions overrides the regions for both. | `bool` | `false` | no |
 | <a name="input_external_id"></a> [external\_id](#input\_external\_id) | Optional compatibility fallback for the Spike External ID. By default, the module reads it from existing Directeam onboarding or the DirecteamTerraformBootstrap stack. | `string` | `null` | no |
 | <a name="input_litellm_logs_bucket_arns"></a> [litellm\_logs\_bucket\_arns](#input\_litellm\_logs\_bucket\_arns) | S3 bucket ARNs where the customer's LiteLLM proxy writes its S3 logger output (one JSON object per request).<br/>Buckets must be in the account where this module runs; the Spike role in that account gets read-only access to<br/>them and the buckets are registered with Spike for collection. Spike reads metadata only (model, tokens, cost,<br/>request tags); prompt and response content is never read. Recommended: enable LiteLLM's content redaction so<br/>content never reaches the bucket. | `list(string)` | `[]` | no |
 | <a name="input_member_account_ids"></a> [member\_account\_ids](#input\_member\_account\_ids) | Deploy the Spike role ONLY to these member accounts (they must belong to organizational\_unit\_ids).<br/>Leave empty to deploy to every account in the targeted OUs. The StackSet uses an INTERSECTION filter so accounts<br/>outside this list never receive the role, including when automatic deployment is enabled. | `list(string)` | `[]` | no |
@@ -475,7 +526,7 @@ module "spike" {
 | <a name="input_role_access_level"></a> [role\_access\_level](#input\_role\_access\_level) | Permission set for the role created in the current account.<br/>- "full": read-only access to resource metadata, billing, cost, and usage data (default).<br/>- "limited": billing, AWS Organizations, CloudFormation, and commitment (RI / Savings Plans) data only. Typically used<br/>  in management accounts that don't run workloads. The enable\_*\_access and enable\_log\_management options don't<br/>  apply to this level.<br/>Member accounts that receive the role through the StackSet always get the "full" permission set. | `string` | `"full"` | no |
 | <a name="input_service_quotas_auto_management_exclusion_list"></a> [service\_quotas\_auto\_management\_exclusion\_list](#input\_service\_quotas\_auto\_management\_exclusion\_list) | Map of AWS service code to quota codes excluded from Automatic Management, e.g. { dynamodb = ["L-F98FE922"] }. | `map(list(string))` | `{}` | no |
 | <a name="input_service_quotas_auto_management_opt_in_type"></a> [service\_quotas\_auto\_management\_opt\_in\_type](#input\_service\_quotas\_auto\_management\_opt\_in\_type) | NotifyOnly sends utilization notifications. NotifyAndAdjust additionally submits quota increase requests automatically; AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved. | `string` | `"NotifyOnly"` | no |
-| <a name="input_service_quotas_auto_management_regions"></a> [service\_quotas\_auto\_management\_regions](#input\_service\_quotas\_auto\_management\_regions) | Regions where Service Quotas Automatic Management is enabled. Leave null for the home region only. | `list(string)` | `null` | no |
+| <a name="input_service_quotas_auto_management_regions"></a> [service\_quotas\_auto\_management\_regions](#input\_service\_quotas\_auto\_management\_regions) | Regions where Service Quotas Automatic Management is enabled. Leave null for every region enabled in the current account, and every region that does not require opt-in in member accounts. Set a list to use the same regions for both. | `list(string)` | `null` | no |
 | <a name="input_spike_template_base_url"></a> [spike\_template\_base\_url](#input\_spike\_template\_base\_url) | Base URL of the Spike CloudFormation templates, provided by Directeam. Required when update\_spike\_stack is true. | `string` | `null` | no |
 | <a name="input_stackset_call_as"></a> [stackset\_call\_as](#input\_stackset\_call\_as) | Set to "DELEGATED\_ADMIN" when running from a CloudFormation StackSets delegated administrator account instead of the management account. In that case the role is only deployed through the StackSet, and no role or CUR export is created in the current account. | `string` | `"SELF"` | no |
 | <a name="input_stackset_failure_tolerance_percentage"></a> [stackset\_failure\_tolerance\_percentage](#input\_stackset\_failure\_tolerance\_percentage) | Percentage of accounts that can fail before the StackSet stops the operation. | `number` | `0` | no |
