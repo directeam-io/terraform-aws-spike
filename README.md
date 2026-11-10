@@ -81,7 +81,10 @@ S3 access logs and VPC flow logs.
     StackSets > **Activate trusted access**, or
     `aws organizations enable-aws-service-access --service-principal member.org.stacksets.cloudformation.amazonaws.com`).
 - `python3` and the AWS CLI on the machine running Terraform are required for onboarding identity discovery, and
-  for Bedrock usage discovery when no explicit account map is provided.
+  for Bedrock usage discovery when no explicit account map is provided. These scripts run the AWS CLI with its default
+  credentials (`AWS_PROFILE` or the AWS access key environment variables), **not** the provider block's `profile` or
+  `assume_role`. If the provider uses a named profile, export `AWS_PROFILE` for the same account before running
+  Terraform; the scripts stop with an error when the CLI credentials belong to a different account.
 - Install the Spike-generated `DirecteamTerraformBootstrap` stack before the first Terraform run. If the matching
   `DirecteamFinOpsStackSet` or `DirecteamFinOpsReadOnlyAccess` stack already exists, Terraform reads the identity from
   that stack instead and preserves its resources.
@@ -336,13 +339,19 @@ hours to start monitoring a region.
 | | Details |
 | --- | --- |
 | Account you run Terraform in (and account mode) | Configured directly by Terraform (`aws_servicequotas_auto_management`, AWS provider >= 6.40.0), one opt-in per region. If auto management is already on in a region, import it: see [Already enabled in the current account](#already-enabled-in-the-current-account). |
-| Member accounts (organization mode) | Deployed through the `DirecteamServiceQuotasAutoManagement` StackSet. CloudFormation has no native resource for auto management, so each member stack carries a small Lambda that calls the Service Quotas APIs and reports status to Directeam. |
+| Member accounts (organization mode) | Deployed through the `DirecteamServiceQuotasAutoManagementMembers` StackSet. CloudFormation has no native resource for auto management, so each member stack carries a small Lambda that calls the Service Quotas APIs and reports status to Directeam. All member regions belong to one stack-instances resource. With the default `stackset_failure_tolerance_percentage = 0`, one failed member region fails the whole operation, and the next apply replaces that resource (all member stacks are recreated); raise the tolerance if you want other regions to go ahead. |
 | Already enabled by you (member accounts) | A region that is already on is left exactly as it is: the module changes nothing, on creation or on later updates, and never turns it off on removal. |
 | Removal | In member accounts, only regions this module turned on are turned off, and only while the setting is still the one the module applied. If you changed the mode or exclusions since, the region is left on. In the current account Terraform stops auto management in every region it manages. |
 | `NotifyAndAdjust` | AWS currently makes it unavailable on some accounts, where enablement fails with the AWS error. Auto-adjust requests can also be rejected without detailed reasons, where a manual request might still be approved. Default is `NotifyOnly`. |
 | Notifications | Delivered through AWS Health. Slack/email delivery (AWS User Notifications) is not wired up in this version. |
 
 #### Already enabled in the current account
+
+Check which regions already have it on before you apply (`ENABLED` means on, `DISABLED` means off):
+
+```bash
+aws service-quotas get-auto-management-configuration --region <region> --query OptInStatus
+```
 
 AWS does not allow starting auto management twice, so if it is already on in a region of the account you run
 Terraform in, `terraform apply` fails for that region only. The other regions are still enabled and saved in state,
@@ -396,10 +405,16 @@ and `terraform destroy` turns it off.
   home region only. It now covers every region enabled in the current account, and every region that needs no opt-in
   in member accounts. The next apply adds those regions; any that are already on in the current account fail until
   imported (see above). Set the list to keep the old behavior, e.g. `["us-east-1"]`.
+- **Organization mode: the member StackSet is replaced.** It is renamed `DirecteamServiceQuotasAutoManagementMembers`,
+  and all member regions now belong to one stack-instances resource (with one resource per region, the next apply
+  removed the member stacks). On the first apply from 1.4.0 the plan shows the old StackSet and its instances
+  destroyed and the new ones created, including member stacks that were fine. Member opt-ins that the module made go
+  off and then on again during that apply; regions you turned on yourself are not touched. If you applied 1.4.0 twice
+  with several regions, the second apply may have removed the member opt-ins; this apply creates them again.
 - **Member regions that were already on are skipped.** With 1.4.0, the member stack for a region that already had
-  auto management failed (the Lambda sent a parameter the API rejects) and changed nothing. From 1.5.0 such a region is
-  left untouched and the stack succeeds. Updating a member stack (for example when you upgrade the module) also failed
-  under 1.4.0 when auto management was on; this is fixed. Stacks that failed under 1.4.0 are created on the next apply.
+  auto management failed (the Lambda sent a parameter the API rejects) and changed nothing. Those failed stacks go
+  away with the old StackSet; the new ones leave such a region untouched and succeed. Updating a member stack also
+  failed under 1.4.0 when auto management was on; this is fixed.
 
 ### Keeping an existing CloudFormation install up to date
 
@@ -436,7 +451,9 @@ module "spike" {
 - **Change targets:** editing `organizational_unit_ids` or `member_account_ids` re-deploys the StackSet instances,
   which briefly removes and recreates the role in the targeted member accounts.
 - **Remove:** `terraform destroy` removes the role from every account and notifies Spike. The CUR bucket is kept if
-  it still contains data, unless `cur_bucket_force_destroy = true`.
+  it still contains data, unless `cur_bucket_force_destroy = true`. When the module created the CUR bucket, AWS writes
+  an `aws-programmatic-access-test-object` into it, so `terraform destroy` stops with `BucketNotEmpty`: set
+  `cur_bucket_force_destroy = true` and apply once to remove the bucket.
 
 <!-- BEGIN_TF_DOCS -->
 ### Requirements

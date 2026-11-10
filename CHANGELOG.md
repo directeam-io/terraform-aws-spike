@@ -16,9 +16,19 @@ All notable changes to this module are documented here. The format follows
 - On removal, member accounts turn off Service Quotas Automatic Management only where the module turned it on and the
   setting is still the one the module applied; a region you changed since is left on.
 - `service_quotas_auto_management_regions` must not be an empty list or contain duplicates.
+- The Service Quotas member StackSet is renamed `DirecteamServiceQuotasAutoManagementMembers` and uses one
+  stack-instances resource for all regions. Upgrading from 1.4.0 in organization mode replaces the StackSet and its
+  instances: member opt-ins made by the module go off and on again during the apply, regions you enabled yourself
+  are untouched. See the README, "Upgrading to 1.5.0".
 
 ### Fixed
 
+- Service Quotas member stack instances were removed by the next `terraform apply` when several regions were set
+  (present since 1.4.0): the provider read every instance of the StackSet into each per-region resource and the next
+  apply deleted them. All regions are now one resource.
+- The existing-install discovery stops with a clear error when the AWS CLI credentials belong to a different account
+  than the one Terraform deploys to (it runs with the CLI's default credentials, not the provider's profile), instead
+  of reporting that Spike is not installed.
 - Updating a Service Quotas member stack failed when auto management was on (the Lambda sent `OptInLevel` to
   `UpdateAutoManagement`, which the API rejects), for example when upgrading the module. The setting is now updated
   with the mode and exclusions only.
