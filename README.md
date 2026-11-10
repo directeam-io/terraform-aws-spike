@@ -30,7 +30,7 @@ You can install it on a whole AWS Organization, on selected linked accounts, or 
 
    module "spike" {
      source  = "directeam-io/spike/aws"
-     version = "1.4.0"
+     version = "1.5.0"
 
      deployment_mode = "organization" # or "account"
    }
@@ -104,7 +104,7 @@ The AWS provider can be configured for any region. The module pins the resources
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "organization"
 }
@@ -118,7 +118,7 @@ The organization root is discovered automatically and accounts that join later a
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "organization"
 
@@ -134,7 +134,7 @@ so automatic deployment still never gives the role to an account unless you add 
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "organization"
 
@@ -153,7 +153,7 @@ and commitment (RI / Savings Plans) data there. Member accounts still get the fu
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode   = "organization"
   role_access_level = "limited"
@@ -165,7 +165,7 @@ module "spike" {
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "account"
 
@@ -186,7 +186,7 @@ using the management account for that:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode  = "organization"
   stackset_call_as = "DELEGATED_ADMIN"
@@ -199,7 +199,7 @@ organization's costs. So install the management account separately, from that ac
 ```hcl
 module "spike_management" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode   = "account"
   enable_cur_export = true
@@ -218,7 +218,7 @@ accounts and regions with Bedrock spend and nothing needs to be listed:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "organization"
 
@@ -260,7 +260,7 @@ every module instance; each account only uses its own entry:
 ```hcl
 module "spike_bedrock_logs" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "account"
 
@@ -297,7 +297,7 @@ account's Spike role receives read access:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "account"
 
@@ -322,7 +322,7 @@ and 95% through AWS Health, without you tracking limits manually:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode = "organization"
 
@@ -426,7 +426,7 @@ with the module version you use (`spike_template_version` output). Upgrading the
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.4.0"
+  version = "1.5.0"
 
   deployment_mode         = "organization" # or "account"
   update_spike_stack      = true

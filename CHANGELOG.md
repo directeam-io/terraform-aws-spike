@@ -5,6 +5,8 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-10
+
 ### Changed
 
 - Service Quotas Automatic Management default regions: with `service_quotas_auto_management_regions` unset, the

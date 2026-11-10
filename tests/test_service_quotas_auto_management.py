@@ -68,7 +68,7 @@ def event(request_type, physical_resource_id=None):
             "ExclusionList": '{"dynamodb": ["L-F98FE922"]}',
             "AccountId": "111111111111",
             "Region": "us-east-1",
-            "StackVersion": "v1.4.0",
+            "StackVersion": "v1.5.0",
         },
     }
 

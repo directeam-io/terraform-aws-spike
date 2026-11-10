@@ -69,7 +69,7 @@ data "aws_organizations_organization" "current" {
 }
 
 locals {
-  module_version = "1.4.0"
+  module_version = "1.5.0"
 
   role_name                              = "DirecteamFinOpsReadOnlyAccess"
   stack_set_name                         = "DirecteamFinOpsReadOnlyAccess"
