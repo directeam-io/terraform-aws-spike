@@ -347,7 +347,9 @@ hours to start monitoring a region.
 
 #### Already enabled in the current account
 
-Check which regions already have it on before you apply (`ENABLED` means on, `DISABLED` means off):
+Check which regions already have it on before you apply (`ENABLED` means on, `DISABLED` means off). The command reads
+the account the AWS CLI is logged into, so run it with the credentials of the account Terraform deploys to. For a
+member account, use that account's credentials or an assumed role:
 
 ```bash
 aws service-quotas get-auto-management-configuration --region <region> --query OptInStatus
@@ -452,8 +454,10 @@ module "spike" {
   which briefly removes and recreates the role in the targeted member accounts.
 - **Remove:** `terraform destroy` removes the role from every account and notifies Spike. The CUR bucket is kept if
   it still contains data, unless `cur_bucket_force_destroy = true`. When the module created the CUR bucket, AWS writes
-  an `aws-programmatic-access-test-object` into it, so `terraform destroy` stops with `BucketNotEmpty`: set
-  `cur_bucket_force_destroy = true` and apply once to remove the bucket.
+  an `aws-programmatic-access-test-object` into it, so `terraform destroy` stops with `BucketNotEmpty`. Set
+  `cur_bucket_force_destroy = true` and run `terraform apply` **before** `terraform destroy`. If destroy already
+  stopped on the bucket, set the flag and run `terraform apply -target=module.<name>.aws_s3_bucket.cur[0]` first, then
+  `terraform destroy` again. A plain `terraform apply` at that point would recreate the whole install.
 
 <!-- BEGIN_TF_DOCS -->
 ### Requirements
