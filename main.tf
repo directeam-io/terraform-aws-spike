@@ -70,7 +70,7 @@ locals {
   role_name                              = "DirecteamFinOpsReadOnlyAccess"
   stack_set_name                         = "DirecteamFinOpsReadOnlyAccess"
   bedrock_stack_set_name                 = "DirecteamBedrockInvocationLogs"
-  service_quotas_stack_set_name          = "DirecteamServiceQuotasAutoManagement"
+  service_quotas_stack_set_name          = "DirecteamServiceQuotasAutoManagementMembers"
   registration_stack_name                = "DirecteamFinOpsRegistration"
   bedrock_registration_stack_name        = "DirecteamBedrockInvocationLogsRegistration"
   litellm_registration_stack_name        = "DirecteamFinOpsLiteLLMLogsRegistration"

@@ -239,10 +239,13 @@ resource "aws_cloudformation_stack_set" "service_quotas" {
 }
 
 resource "aws_cloudformation_stack_instances" "service_quotas" {
-  for_each = local.deploy_service_quotas_stackset ? toset(local.member_service_quotas_regions) : toset([])
+  # One resource for all regions: the provider reads every instance of the
+  # StackSet into each resource, so one resource per region drifts and the
+  # next apply deletes the member instances.
+  count = local.deploy_service_quotas_stackset ? 1 : 0
 
   stack_set_name = aws_cloudformation_stack_set.service_quotas[0].name
-  regions        = [each.key]
+  regions        = local.member_service_quotas_regions
   call_as        = var.stackset_call_as
   retain_stacks  = false
 

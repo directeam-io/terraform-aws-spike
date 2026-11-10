@@ -99,8 +99,13 @@ run "organization" {
   }
 
   assert {
-    condition     = length(aws_servicequotas_auto_management.spike) == 2 && length(aws_cloudformation_stack_set.service_quotas) == 1 && toset(keys(aws_cloudformation_stack_instances.service_quotas)) == toset(["us-east-1", "us-west-2"])
-    error_message = "The management account must be configured directly and members must be deployed per region."
+    condition     = length(aws_servicequotas_auto_management.spike) == 2 && length(aws_cloudformation_stack_set.service_quotas) == 1 && length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-east-1", "us-west-2"])
+    error_message = "The management account must be configured directly and members must be deployed through one stack-instances resource for all regions."
+  }
+
+  assert {
+    condition     = aws_cloudformation_stack_set.service_quotas[0].name == "DirecteamServiceQuotasAutoManagementMembers" && aws_cloudformation_stack_instances.service_quotas[0].stack_set_name == aws_cloudformation_stack_set.service_quotas[0].name
+    error_message = "The member StackSet must use the new name (it replaces the 1.4.0 StackSet on upgrade) and the instances must belong to it."
   }
 
   assert {
@@ -175,7 +180,7 @@ run "default_regions" {
   }
 
   assert {
-    condition     = toset(keys(aws_cloudformation_stack_instances.service_quotas)) == toset(["us-east-1", "eu-west-1"])
+    condition     = length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-east-1", "eu-west-1"])
     error_message = "With no region list, member accounts must use only the regions that need no opt-in."
   }
 
@@ -195,7 +200,7 @@ run "explicit_regions_override_both" {
   }
 
   assert {
-    condition     = toset(keys(aws_servicequotas_auto_management.spike)) == toset(["us-west-2", "af-south-1"]) && toset(keys(aws_cloudformation_stack_instances.service_quotas)) == toset(["us-west-2", "af-south-1"])
+    condition     = toset(keys(aws_servicequotas_auto_management.spike)) == toset(["us-west-2", "af-south-1"]) && length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-west-2", "af-south-1"])
     error_message = "An explicit region list must apply to the current account and to member accounts."
   }
 
