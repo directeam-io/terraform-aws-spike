@@ -5,6 +5,36 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Service Quotas Automatic Management default regions: with `service_quotas_auto_management_regions` unset, the
+  current account now uses every region enabled in the account and member accounts use every region that needs no
+  opt-in, instead of the home region only. Regions already on in the current account fail to apply until imported;
+  see the README, "Upgrading to 1.5.0". Set the list to keep the old behavior.
+- Service Quotas Automatic Management in member accounts now skips a region where it was already on: nothing is
+  changed and the stack succeeds. Version 1.4.0 failed the member stack for such a region without changing it.
+- On removal, member accounts turn off Service Quotas Automatic Management only where the module turned it on and the
+  setting is still the one the module applied; a region you changed since is left on.
+- `service_quotas_auto_management_regions` must not be an empty list or contain duplicates.
+- The Service Quotas member StackSet is renamed `DirecteamServiceQuotasAutoManagementMembers` and uses one
+  stack-instances resource for all regions. Upgrading from 1.4.0 in organization mode replaces the StackSet and its
+  instances: member opt-ins made by the module go off and on again during the apply, regions you enabled yourself
+  are untouched. See the README, "Upgrading to 1.5.0".
+
+### Fixed
+
+- Service Quotas member stack instances were removed by the next `terraform apply` when several regions were set
+  (present since 1.4.0): the provider read every instance of the StackSet into each per-region resource and the next
+  apply deleted them. All regions are now one resource.
+- The existing-install discovery stops with a clear error when the AWS CLI credentials belong to a different account
+  than the one Terraform deploys to (it runs with the CLI's default credentials, not the provider's profile), instead
+  of reporting that Spike is not installed.
+- Updating a Service Quotas member stack failed when auto management was on (the Lambda sent `OptInLevel` to
+  `UpdateAutoManagement`, which the API rejects), for example when upgrading the module. The setting is now updated
+  with the mode and exclusions only.
+- The README import example for a current-account region that already has Service Quotas Automatic Management on
+  works before Terraform 1.12 (it no longer relies on `identity`), and documents the apply failure for such regions.
+
 ## [1.4.0] - 2026-11-05
 
 ### Added

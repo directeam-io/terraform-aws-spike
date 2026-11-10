@@ -17,6 +17,12 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_regions" {
+    defaults = {
+      names = ["us-east-1", "eu-west-1", "ap-southeast-3"]
+    }
+  }
+
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
@@ -93,8 +99,13 @@ run "organization" {
   }
 
   assert {
-    condition     = length(aws_servicequotas_auto_management.spike) == 2 && length(aws_cloudformation_stack_set.service_quotas) == 1 && toset(keys(aws_cloudformation_stack_instances.service_quotas)) == toset(["us-east-1", "us-west-2"])
-    error_message = "The management account must be configured directly and members must be deployed per region."
+    condition     = length(aws_servicequotas_auto_management.spike) == 2 && length(aws_cloudformation_stack_set.service_quotas) == 1 && length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-east-1", "us-west-2"])
+    error_message = "The management account must be configured directly and members must be deployed through one stack-instances resource for all regions."
+  }
+
+  assert {
+    condition     = aws_cloudformation_stack_set.service_quotas[0].name == "DirecteamServiceQuotasAutoManagementMembers" && aws_cloudformation_stack_instances.service_quotas[0].stack_set_name == aws_cloudformation_stack_set.service_quotas[0].name
+    error_message = "The member StackSet must use the new name (it replaces the 1.4.0 StackSet on upgrade) and the instances must belong to it."
   }
 
   assert {
@@ -146,16 +157,79 @@ run "existing_onboarding_organization" {
   }
 }
 
-run "home_region_only_by_default" {
+run "default_regions" {
   command = plan
 
   variables {
-    deployment_mode                       = "account"
+    deployment_mode                       = "organization"
     enable_service_quotas_auto_management = true
   }
 
-  assert {
-    condition     = toset(keys(aws_servicequotas_auto_management.spike)) == toset(["us-east-1"])
-    error_message = "With no region list, auto management must be enabled in the home region only."
+  # The current account has opted in to ap-southeast-3; members only get the
+  # regions that need no opt-in.
+  override_data {
+    target = data.aws_regions.service_quotas_members[0]
+    values = {
+      names = ["us-east-1", "eu-west-1"]
+    }
   }
+
+  assert {
+    condition     = toset(keys(aws_servicequotas_auto_management.spike)) == toset(["us-east-1", "eu-west-1", "ap-southeast-3"])
+    error_message = "With no region list, the current account must use every enabled region."
+  }
+
+  assert {
+    condition     = length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-east-1", "eu-west-1"])
+    error_message = "With no region list, member accounts must use only the regions that need no opt-in."
+  }
+
+  assert {
+    condition     = length(local.service_quotas_registration_resources) == length(local.local_service_quotas_regions) && length(jsonencode(local.service_quotas_registration_resources)) < 51200
+    error_message = "The registration template must have one resource per local region and stay within the CloudFormation inline limit."
+  }
+}
+
+run "explicit_regions_override_both" {
+  command = plan
+
+  variables {
+    deployment_mode                        = "organization"
+    enable_service_quotas_auto_management  = true
+    service_quotas_auto_management_regions = ["us-west-2", "af-south-1"]
+  }
+
+  assert {
+    condition     = toset(keys(aws_servicequotas_auto_management.spike)) == toset(["us-west-2", "af-south-1"]) && length(aws_cloudformation_stack_instances.service_quotas) == 1 && toset(aws_cloudformation_stack_instances.service_quotas[0].regions) == toset(["us-west-2", "af-south-1"])
+    error_message = "An explicit region list must apply to the current account and to member accounts."
+  }
+
+  assert {
+    condition     = length(data.aws_regions.service_quotas_current) == 0 && length(data.aws_regions.service_quotas_members) == 0
+    error_message = "No region lookup is needed when the regions are set."
+  }
+}
+
+run "empty_regions_rejected" {
+  command = plan
+
+  variables {
+    deployment_mode                        = "account"
+    enable_service_quotas_auto_management  = true
+    service_quotas_auto_management_regions = []
+  }
+
+  expect_failures = [var.service_quotas_auto_management_regions]
+}
+
+run "duplicate_regions_rejected" {
+  command = plan
+
+  variables {
+    deployment_mode                        = "account"
+    enable_service_quotas_auto_management  = true
+    service_quotas_auto_management_regions = ["us-east-1", "us-east-1"]
+  }
+
+  expect_failures = [var.service_quotas_auto_management_regions]
 }

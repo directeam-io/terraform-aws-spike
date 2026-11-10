@@ -13,6 +13,10 @@ discovery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(discovery)
 
 
+def caller_identity(account_id="111111111111"):
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps({"Account": account_id}), stderr="")
+
+
 class ExistingOnboardingDiscoveryTest(unittest.TestCase):
     def test_missing_stack_returns_none(self):
         completed = subprocess.CompletedProcess(
@@ -56,7 +60,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
         stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
         stdout = io.StringIO()
         with (
-            mock.patch.object(discovery.subprocess, "run", return_value=completed),
+            mock.patch.object(discovery.subprocess, "run", side_effect=[caller_identity(), completed]),
             mock.patch.object(sys, "stdin", stdin),
             mock.patch.object(sys, "stdout", stdout),
         ):
@@ -110,7 +114,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
             mock.patch.object(
                 discovery.subprocess,
                 "run",
-                side_effect=[missing_base, stackset_instances, stackset_instance],
+                side_effect=[caller_identity(), missing_base, stackset_instances, stackset_instance],
             ),
             mock.patch.object(sys, "stdin", stdin),
             mock.patch.object(sys, "stdout", stdout),
@@ -162,7 +166,7 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
             stderr="",
         )
         with (
-            mock.patch.object(discovery.subprocess, "run", side_effect=[missing_base, no_stackset_instance, bootstrap]),
+            mock.patch.object(discovery.subprocess, "run", side_effect=[caller_identity(), missing_base, no_stackset_instance, bootstrap]),
             mock.patch.object(sys, "stdin", stdin),
             mock.patch.object(sys, "stdout", stdout),
         ):
@@ -180,6 +184,31 @@ class ExistingOnboardingDiscoveryTest(unittest.TestCase):
                 "directeam_id": "dtid-456",
             },
         )
+
+    def test_credentials_of_another_account_fail_before_any_stack_lookup(self):
+        stdin = io.StringIO(json.dumps({"deployment_mode": "account", "account_id": "111111111111"}))
+        with (
+            mock.patch.object(discovery.subprocess, "run", side_effect=[caller_identity("222222222222")]) as run,
+            mock.patch.object(sys, "stdin", stdin),
+        ):
+            with self.assertRaises(discovery.DiscoveryError) as error:
+                discovery.main()
+        self.assertIn("222222222222", str(error.exception))
+        self.assertIn("111111111111", str(error.exception))
+        self.assertIn("AWS_PROFILE", str(error.exception))
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args[0][:3], ["aws", "sts", "get-caller-identity"])
+
+    def test_failing_credential_check_reports_the_aws_error(self):
+        failed = subprocess.CompletedProcess(args=[], returncode=255, stdout="", stderr="Unable to locate credentials")
+        with mock.patch.object(discovery.subprocess, "run", return_value=failed):
+            with self.assertRaises(discovery.DiscoveryError) as error:
+                discovery.check_credentials("111111111111")
+        self.assertIn("Unable to locate credentials", str(error.exception))
+
+    def test_matching_credentials_pass(self):
+        with mock.patch.object(discovery.subprocess, "run", return_value=caller_identity()):
+            discovery.check_credentials("111111111111")
 
 
 if __name__ == "__main__":

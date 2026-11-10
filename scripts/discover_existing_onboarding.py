@@ -23,6 +23,31 @@ class DiscoveryError(Exception):
     pass
 
 
+def check_credentials(expected_account_id):
+    try:
+        completed = subprocess.run(
+            ["aws", "sts", "get-caller-identity", "--output", "json"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except FileNotFoundError as error:
+        raise DiscoveryError("The AWS CLI is required to detect existing onboarding stacks.") from error
+    except subprocess.TimeoutExpired as error:
+        raise DiscoveryError("The AWS CLI credential check timed out.") from error
+    if completed.returncode != 0:
+        raise DiscoveryError(f"The AWS CLI credential check failed: {completed.stderr.strip()}")
+    actual = str(json.loads(completed.stdout or "{}").get("Account") or "")
+    if actual != expected_account_id:
+        raise DiscoveryError(
+            f"The AWS CLI credentials belong to account {actual}, but Terraform is deploying to account "
+            f"{expected_account_id} (for example through a provider profile or assume_role). This lookup runs the AWS "
+            "CLI with its default credentials, not the provider's: export AWS_PROFILE (or the AWS access keys) for the "
+            "target account before running Terraform."
+        )
+
+
 def describe_stack(stack_name):
     try:
         completed = subprocess.run(
@@ -122,6 +147,7 @@ def main():
     if not isinstance(account_id, str) or len(account_id) != 12 or not account_id.isdigit():
         raise DiscoveryError("account_id must be a 12-digit AWS account ID.")
 
+    check_credentials(account_id)
     base_stack_name = BASE_STACK_NAMES[deployment_mode]
     base_stack = describe_stack(base_stack_name)
     if base_stack is None:
