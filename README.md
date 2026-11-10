@@ -456,8 +456,14 @@ module "spike" {
   it still contains data, unless `cur_bucket_force_destroy = true`. When the module created the CUR bucket, AWS writes
   an `aws-programmatic-access-test-object` into it, so `terraform destroy` stops with `BucketNotEmpty`. Set
   `cur_bucket_force_destroy = true` and run `terraform apply` **before** `terraform destroy`. If destroy already
-  stopped on the bucket, set the flag and run `terraform apply -target=module.<name>.aws_s3_bucket.cur[0]` first, then
-  `terraform destroy` again. A plain `terraform apply` at that point would recreate the whole install.
+  stopped on the bucket, set the flag and run this first (the quotes keep the shell from reading `[0]` as a pattern),
+  then `terraform destroy` again:
+
+  ```bash
+  terraform apply -target='module.<name>.aws_s3_bucket.cur[0]'
+  ```
+
+  A plain `terraform apply` at that point would recreate the whole install.
 
 <!-- BEGIN_TF_DOCS -->
 ### Requirements
