@@ -13,6 +13,9 @@ data "aws_cloudformation_stack" "bootstrap" {
   }
 }
 
+# Detects an existing CloudFormation install at plan time. Like the Bedrock discovery below, it runs the AWS CLI with its
+# default credentials (AWS_PROFILE or environment keys), not the provider block's profile or assume_role; the script
+# fails when those credentials belong to a different account than the one Terraform deploys to.
 data "external" "existing_onboarding" {
   count = var.base_onboarding_mode != "create" ? 1 : 0
 
@@ -31,7 +34,8 @@ data "external" "existing_onboarding" {
   }
 }
 
-# Finds where Bedrock is used from Cost Explorer (plan time). Runs the AWS CLI with the credentials Terraform runs with.
+# Finds where Bedrock is used from Cost Explorer (plan time). Runs the AWS CLI with its default credentials
+# (AWS_PROFILE or environment keys), not the provider block's profile or assume_role; the script checks the account.
 data "external" "bedrock_usage" {
   count = var.enable_bedrock_invocation_logs && var.bedrock_invocation_logs_accounts == null ? 1 : 0
 
