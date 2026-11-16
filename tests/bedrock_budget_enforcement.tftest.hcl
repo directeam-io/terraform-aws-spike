@@ -87,12 +87,12 @@ run "organization_mode" {
   }
 }
 
-run "directeam_delegator_access_without_customer_enforcement" {
+run "directeam_delegator_access_when_enabled" {
   command = plan
   variables {
-    deployment_mode                        = "account"
-    enable_bedrock_invocation_logs         = false
-    enable_bedrock_budget_delegator_access = true
+    deployment_mode                   = "account"
+    enable_bedrock_invocation_logs    = false
+    enable_bedrock_budget_enforcement = true
   }
   override_data {
     target = data.aws_caller_identity.current
@@ -112,16 +112,22 @@ run "directeam_delegator_access_without_customer_enforcement" {
   }
   assert {
     condition     = length(aws_lambda_function.bedrock_budget_blocker) == 0
-    error_message = "Shared delegator access must not depend on enabling customer enforcement."
+    error_message = "The customer blocker requires invocation logging."
   }
 }
 
-run "reject_delegator_access_in_customer_account" {
+run "directeam_delegator_access_when_disabled" {
   command = plan
   variables {
-    deployment_mode                        = "account"
-    enable_bedrock_invocation_logs         = false
-    enable_bedrock_budget_delegator_access = true
+    deployment_mode                = "account"
+    enable_bedrock_invocation_logs = false
   }
-  expect_failures = [aws_iam_role_policy.bedrock_budget_delegator]
+  override_data {
+    target = data.aws_caller_identity.current
+    values = { account_id = "250260913666" }
+  }
+  assert {
+    condition     = length(aws_iam_role_policy.bedrock_budget_delegator) == 0
+    error_message = "The Directeam delegator permission must be disabled with budget enforcement."
+  }
 }

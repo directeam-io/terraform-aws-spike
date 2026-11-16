@@ -5,6 +5,13 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-16
+
+### Changed
+
+- `enable_bedrock_budget_enforcement` now manages the Directeam delegator grant in Directeam accounts. The
+  separate `enable_bedrock_budget_delegator_access` input is removed; remove it when upgrading from 1.6.0.
+
 ## [1.6.0] - 2026-11-16
 
 ### Added

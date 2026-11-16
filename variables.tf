@@ -77,13 +77,7 @@ variable "update_spike_stack" {
 }
 
 variable "enable_bedrock_budget_enforcement" {
-  description = "Deploy the Bedrock budget blocker into accounts selected for invocation logging."
-  type        = bool
-  default     = false
-}
-
-variable "enable_bedrock_budget_delegator_access" {
-  description = "Directeam accounts only: allow the existing DirecteamAccessDelegator role to assume customer Bedrock budget manager roles. Enable in only one module instance per delegator account, independently of customer enforcement."
+  description = "Deploy the Bedrock budget blocker into accounts selected for invocation logging. In a Directeam delegator account, also allow the existing delegator to assume customer budget manager roles."
   type        = bool
   default     = false
 }

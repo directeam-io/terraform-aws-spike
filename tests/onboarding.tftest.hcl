@@ -115,7 +115,7 @@ run "organization_whole_org" {
       directeamId    = "directeam-test-id"
       stackArn       = { Ref = "AWS::StackId" }
       stackName      = "DirecteamFinOpsReadOnlyAccess"
-      stackVersion   = "v1.6.0"
+      stackVersion   = "v2.0.0"
       state          = "finish"
     })
     error_message = "The registration notification must match the CloudFormation onboarding contract."
