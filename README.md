@@ -30,7 +30,7 @@ You can install it on a whole AWS Organization, on selected linked accounts, or 
 
    module "spike" {
      source  = "directeam-io/spike/aws"
-     version = "1.5.0"
+     version = "1.6.0"
 
      deployment_mode = "organization" # or "account"
    }
@@ -104,7 +104,7 @@ The AWS provider can be configured for any region. The module pins the resources
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "organization"
 }
@@ -118,7 +118,7 @@ The organization root is discovered automatically and accounts that join later a
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "organization"
 
@@ -134,7 +134,7 @@ so automatic deployment still never gives the role to an account unless you add 
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "organization"
 
@@ -153,7 +153,7 @@ and commitment (RI / Savings Plans) data there. Member accounts still get the fu
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode   = "organization"
   role_access_level = "limited"
@@ -165,7 +165,7 @@ module "spike" {
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "account"
 
@@ -186,7 +186,7 @@ using the management account for that:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode  = "organization"
   stackset_call_as = "DELEGATED_ADMIN"
@@ -199,7 +199,7 @@ organization's costs. So install the management account separately, from that ac
 ```hcl
 module "spike_management" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode   = "account"
   enable_cur_export = true
@@ -218,7 +218,7 @@ accounts and regions with Bedrock spend and nothing needs to be listed:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "organization"
 
@@ -260,7 +260,7 @@ every module instance; each account only uses its own entry:
 ```hcl
 module "spike_bedrock_logs" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "account"
 
@@ -288,6 +288,41 @@ Regions must be enabled in the corresponding accounts. Nothing is uploaded to yo
 the Bedrock template is sent inline. Terraform validates CloudFormation's 51,200-byte inline-template limit and fails
 planning if the selected account/Region map exceeds it; narrow the map with `bedrock_invocation_logs_accounts`.
 
+### Bedrock identity budget enforcement
+
+To enable customer-side enforcement of identity budgets, use a module version that includes this feature and set both
+flags in the Spike module block:
+
+```hcl
+enable_bedrock_invocation_logs    = true
+enable_bedrock_budget_enforcement = true
+```
+
+Enforcement is off by default and is deployed only to accounts selected for invocation logging. Set
+`bedrock_invocation_logs_accounts` if you need to pin those accounts and regions. The customer-side Lambda can add
+and remove an inline Bedrock deny policy on eligible IAM roles and users; the platform's manager role can only invoke
+that Lambda. The platform's `DirecteamAccessDelegator` must be allowed to assume the manager role, which still
+requires the customer's External ID.
+
+In the **Directeam-owned account's module instance**, enable the shared delegator permission separately:
+
+```hcl
+enable_bedrock_budget_delegator_access = true
+```
+
+This creates only the additional `DirecteamAssumeBedrockBudgetManager` inline policy on the existing delegator;
+it does not change the role's trust or other policies. Enable it in only one module instance per delegator account.
+The flag defaults to `false` and Terraform rejects it in customer accounts. Keep it enabled while any customers use
+enforcement: it is independent of `enable_bedrock_budget_enforcement`, so disabling one customer's blocker does not
+revoke the platform's shared access. Applying customer Terraform alone cannot grant permissions in Directeam's account.
+
+Spike estimates invocation-log usage using standard rates and reconciles budgets hourly, so actual charges can differ
+and usage can exceed a cap before a block is applied. Unsupported identities remain alert-only. OpenAI-compatible
+calls through `bedrock-runtime` are included in invocation logging; calls through the separate `bedrock-mantle` endpoint
+are not counted toward caps. Once a cap is reached, the deny policy blocks inference for that identity on both
+endpoints. Disabling enforcement or removing the module runs cleanup to release its deny policies before removing the
+blocker.
+
 ### LiteLLM logs
 
 Lets Spike collect usage from your LiteLLM proxy when it logs to S3 with LiteLLM's S3 logger (one JSON object per
@@ -297,7 +332,7 @@ account's Spike role receives read access:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "account"
 
@@ -322,7 +357,7 @@ and 95% through AWS Health, without you tracking limits manually:
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode = "organization"
 
@@ -426,7 +461,7 @@ with the module version you use (`spike_template_version` output). Upgrading the
 ```hcl
 module "spike" {
   source  = "directeam-io/spike/aws"
-  version = "1.5.0"
+  version = "1.6.0"
 
   deployment_mode         = "organization" # or "account"
   update_spike_stack      = true
@@ -471,6 +506,7 @@ module "spike" {
 | Name | Version |
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_archive"></a> [archive](#requirement\_archive) | >= 2.7.0, < 3.0.0 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.40.0 |
 | <a name="requirement_external"></a> [external](#requirement\_external) | >= 2.3 |
 
@@ -478,6 +514,7 @@ module "spike" {
 
 | Name | Version |
 |------|---------|
+| <a name="provider_archive"></a> [archive](#provider\_archive) | >= 2.7.0, < 3.0.0 |
 | <a name="provider_aws"></a> [aws](#provider\_aws) | >= 6.40.0 |
 | <a name="provider_external"></a> [external](#provider\_external) | >= 2.3 |
 | <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
@@ -488,25 +525,37 @@ module "spike" {
 |------|------|
 | [aws_bcmdataexports_export.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bcmdataexports_export) | resource |
 | [aws_bedrock_model_invocation_logging_configuration.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrock_model_invocation_logging_configuration) | resource |
+| [aws_cloudformation_stack.bedrock_budget_cleanup](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
+| [aws_cloudformation_stack.bedrock_budget_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.bedrock_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.litellm_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
 | [aws_cloudformation_stack.service_quotas_registration](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack) | resource |
+| [aws_cloudformation_stack_instances.bedrock_budget](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
 | [aws_cloudformation_stack_instances.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
 | [aws_cloudformation_stack_instances.service_quotas](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_instances) | resource |
+| [aws_cloudformation_stack_set.bedrock_budget](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set.service_quotas](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set) | resource |
 | [aws_cloudformation_stack_set_instance.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudformation_stack_set_instance) | resource |
 | [aws_iam_policy.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
+| [aws_iam_role.budget_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role.budget_manager](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.bedrock_budget_delegator](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.bedrock_logs_read](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.budget_execution](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.budget_manager](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.litellm_logs_read](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy_attachment.budget_lambda_logging](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.spike](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_kms_alias.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
 | [aws_kms_alias.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias) | resource |
 | [aws_kms_key.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key) | resource |
 | [aws_kms_key.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key) | resource |
+| [aws_lambda_function.bedrock_budget_blocker](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function) | resource |
+| [aws_lambda_function.bedrock_budget_cleanup](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function) | resource |
 | [aws_s3_bucket.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
 | [aws_s3_bucket.cur](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) | resource |
 | [aws_s3_bucket_lifecycle_configuration.bedrock_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_lifecycle_configuration) | resource |
@@ -536,6 +585,8 @@ module "spike" {
 | <a name="input_cur_bucket_force_destroy"></a> [cur\_bucket\_force\_destroy](#input\_cur\_bucket\_force\_destroy) | Allow Terraform to delete the CUR bucket even when it still contains report data. Leave false in production. | `bool` | `false` | no |
 | <a name="input_deployment_mode"></a> [deployment\_mode](#input\_deployment\_mode) | How Spike is installed:<br/>- "organization": run from the AWS Organizations management account (or a CloudFormation StackSets delegated administrator).<br/>  Creates the Spike role in the current account and deploys it to member accounts through a service-managed StackSet.<br/>- "account": create the Spike role in the current account only. Use this for standalone accounts, or for individual<br/>  linked accounts when you don't want to (or can't) deploy from the management account. | `string` | n/a | yes |
 | <a name="input_directeam_id"></a> [directeam\_id](#input\_directeam\_id) | Optional compatibility fallback for the Directeam customer ID. By default, the module reads it from existing Directeam onboarding or the DirecteamTerraformBootstrap stack. | `string` | `null` | no |
+| <a name="input_enable_bedrock_budget_delegator_access"></a> [enable\_bedrock\_budget\_delegator\_access](#input\_enable\_bedrock\_budget\_delegator\_access) | Directeam accounts only: allow the existing DirecteamAccessDelegator role to assume customer Bedrock budget manager roles. Enable in only one module instance per delegator account, independently of customer enforcement. | `bool` | `false` | no |
+| <a name="input_enable_bedrock_budget_enforcement"></a> [enable\_bedrock\_budget\_enforcement](#input\_enable\_bedrock\_budget\_enforcement) | Deploy the Bedrock budget blocker into accounts selected for invocation logging. | `bool` | `false` | no |
 | <a name="input_enable_bedrock_invocation_logs"></a> [enable\_bedrock\_invocation\_logs](#input\_enable\_bedrock\_invocation\_logs) | Collect Amazon Bedrock invocation logs for Spike, only in the accounts and regions that use Bedrock. Logs contain<br/>metadata only (model, caller identity, token counts); prompts, responses, and embeddings are never delivered.<br/>Where Bedrock is used is found automatically from AWS Cost Explorer, unless bedrock\_invocation\_logs\_accounts is set.<br/>- Current account: logging is configured directly and REPLACES any existing invocation logging configuration in<br/>  its regions that use Bedrock.<br/>- Member accounts (organization mode): deployed by a separate Bedrock-only StackSet. Account/region pairs that<br/>  already have invocation logging configured are left unchanged and skipped. | `bool` | `false` | no |
 | <a name="input_enable_cloudwatch_logs_read_access"></a> [enable\_cloudwatch\_logs\_read\_access](#input\_enable\_cloudwatch\_logs\_read\_access) | Allow Spike to read CloudWatch Logs content (log events, Logs Insights queries, live tail). CloudWatch metrics access is not affected. | `bool` | `true` | no |
 | <a name="input_enable_cur_export"></a> [enable\_cur\_export](#input\_enable\_cur\_export) | Create an S3 bucket and a CUR 2.0 (Parquet) data export that Spike reads cost data from. Spike needs it once, from<br/>the management account, because it sees the costs of every account.<br/>- deployment\_mode = "organization": on by default in the management account; set false to disable it. Not created<br/>  when running as a delegated administrator; install the management account with deployment\_mode = "account" and<br/>  enable\_cur\_export = true instead.<br/>- deployment\_mode = "account": off by default, since a linked account's export only contains its own costs. Set it<br/>  to true for the management account or for a standalone account that isn't part of an AWS Organization. | `bool` | `null` | no |

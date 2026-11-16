@@ -5,6 +5,15 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-16
+
+### Added
+
+- `enable_bedrock_budget_enforcement`: opt-in customer-side Bedrock identity budget enforcement with a manager role,
+  blocker Lambda, registration, and teardown cleanup. The deny covers Bedrock runtime and Mantle inference.
+- `enable_bedrock_budget_delegator_access`: independently opt in to the shared manager-role assumption permission
+  in a Directeam delegator account; customer account configurations cannot enable it.
+
 ## [1.5.0] - 2026-11-10
 
 ### Changed

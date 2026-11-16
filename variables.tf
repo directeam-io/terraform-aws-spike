@@ -76,6 +76,18 @@ variable "update_spike_stack" {
   default     = false
 }
 
+variable "enable_bedrock_budget_enforcement" {
+  description = "Deploy the Bedrock budget blocker into accounts selected for invocation logging."
+  type        = bool
+  default     = false
+}
+
+variable "enable_bedrock_budget_delegator_access" {
+  description = "Directeam accounts only: allow the existing DirecteamAccessDelegator role to assume customer Bedrock budget manager roles. Enable in only one module instance per delegator account, independently of customer enforcement."
+  type        = bool
+  default     = false
+}
+
 variable "spike_template_base_url" {
   description = "Base URL of the Spike CloudFormation templates, provided by Directeam. Required when update_spike_stack is true."
   type        = string
